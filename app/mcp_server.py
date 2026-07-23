@@ -440,5 +440,81 @@ def create_calendar_event(
     }
 
 
+@mcp.tool()
+def update_calendar_event(
+    event_id: str,
+    title: str = None,
+    start_time: str = None,
+    end_time: str = None,
+    description: str = None,
+):
+    """Update an existing Google Calendar event."""
+
+    service = get_calendar_service()
+
+    event = (
+        service.events()
+        .get(
+            calendarId="primary",
+            eventId=event_id,
+        )
+        .execute()
+    )
+
+    if title is not None:
+        event["summary"] = title
+
+    if description is not None:
+        event["description"] = description
+
+    if start_time is not None:
+        event["start"] = {
+            "dateTime": start_time,
+            "timeZone": "Asia/Kolkata",
+        }
+
+    if end_time is not None:
+        event["end"] = {
+            "dateTime": end_time,
+            "timeZone": "Asia/Kolkata",
+        }
+
+    updated = (
+        service.events()
+        .update(
+            calendarId="primary",
+            eventId=event_id,
+            body=event,
+        )
+        .execute()
+    )
+
+    return {
+        "success": True,
+        "event_id": updated["id"],
+        "title": updated.get("summary"),
+        "start": updated.get("start"),
+        "end": updated.get("end"),
+    }
+
+
+@mcp.tool()
+def delete_calendar_event(event_id: str):
+    """Delete an existing Google Calendar event."""
+
+    service = get_calendar_service()
+
+    service.events().delete(
+        calendarId="primary",
+        eventId=event_id,
+    ).execute()
+
+    return {
+        "success": True,
+        "event_id": event_id,
+        "message": "Calendar event deleted successfully.",
+    }
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
