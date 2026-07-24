@@ -8,6 +8,10 @@ import base64
 from email.message import EmailMessage
 from app.tools.calender import get_calendar_service
 from datetime import datetime, timezone
+from app.tools.export import (
+    create_pdf,
+    create_excel,
+)
 
 load_dotenv()
 
@@ -514,6 +518,47 @@ def delete_calendar_event(event_id: str):
         "event_id": event_id,
         "message": "Calendar event deleted successfully.",
     }
+
+
+@mcp.tool()
+def export_to_pdf(
+    content: str,
+    file_name: str = "document",
+):
+    """
+    Convert text/content into a downloadable PDF file.
+
+    Use when the user asks to export, save,
+    convert or download content as PDF.
+    """
+
+    return create_pdf(
+        content=content,
+        file_name=file_name,
+    )
+
+
+@mcp.tool()
+def export_to_excel(
+    data: list[dict],
+    file_name: str = "export",
+):
+    """
+    Convert structured data into a downloadable Excel file.
+
+    data must be a list of dictionaries.
+
+    Example:
+    [
+        {"name": "Ahmed", "email": "a@gmail.com"},
+        {"name": "John", "email": "j@gmail.com"}
+    ]
+    """
+
+    return create_excel(
+        data=data,
+        file_name=file_name,
+    )
 
 
 if __name__ == "__main__":

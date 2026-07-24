@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.graph import init_graph
 from app.routes import router
+from fastapi.staticfiles import StaticFiles
 
 
 @asynccontextmanager
@@ -12,6 +13,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Executive Assistant", lifespan=lifespan)
+
+app.mount(
+    "/exports",
+    StaticFiles(directory="exports"),
+    name="exports",
+)
 
 app.add_middleware(
     CORSMiddleware,
