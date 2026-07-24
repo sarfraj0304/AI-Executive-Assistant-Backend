@@ -14,6 +14,7 @@ from app.tools.export import (
 )
 import mimetypes
 import base64
+from app.tools.meet import get_meet_service
 
 load_dotenv()
 
@@ -625,6 +626,81 @@ def export_to_excel(
         data=data,
         file_name=file_name,
     )
+
+
+@mcp.tool()
+def create_google_meet():
+    """
+    Create a new Google Meet meeting space.
+
+    Use this tool when the user asks to:
+    - create a Google Meet
+    - generate a Google Meet link
+    - start a new Meet space
+
+    Returns the Google Meet URL and meeting code.
+    """
+
+    service = get_meet_service()
+
+    space = service.spaces().create(body={}).execute()
+
+    return {
+        "success": True,
+        "space_name": space.get("name"),
+        "meeting_uri": space.get("meetingUri"),
+        "meeting_code": space.get("meetingCode"),
+    }
+
+
+@mcp.tool()
+def get_google_meet(space_name: str):
+    """
+    Get information about a Google Meet space.
+
+    space_name should be the resource name returned by
+    create_google_meet, for example: spaces/abc123
+    """
+
+    service = get_meet_service()
+
+    space = service.spaces().get(name=space_name).execute()
+
+    return {
+        "success": True,
+        "space_name": space.get("name"),
+        "meeting_uri": space.get("meetingUri"),
+        "meeting_code": space.get("meetingCode"),
+        "config": space.get("config"),
+        "active_conference": space.get("activeConference"),
+    }
+
+
+@mcp.tool()
+def end_google_meet(space_name: str):
+    """
+    End the active conference in a Google Meet space.
+
+    Use only when the user explicitly asks to end/stop
+    an active Google Meet meeting.
+    """
+
+    service = get_meet_service()
+
+    (
+        service.spaces()
+        .endActiveConference(
+            name=space_name,
+            body={},
+        )
+        .execute()
+    )
+
+    return {
+        "success": True,
+        "space_name": space_name,
+        "message": "Google Meet conference ended.",
+    }
 
 
 if __name__ == "__main__":

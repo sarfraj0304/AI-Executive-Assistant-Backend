@@ -4,4 +4,5 @@ APPROVAL_REQUIRED_TOOLS = {
     "create_calendar_event": {"message": "Do you want to create this calendar event?"},
     "update_calendar_event": {"message": "Do you want to update this calendar event?"},
     "delete_calendar_event": {"message": "Do you want to delete this calendar event?"},
+    "end_google_meet": {"message": "Do you want to end this Google Meet?"},
 }

@@ -13,6 +13,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",  # mark read/unread, labels, trash, etc.
     # Calendar
     "https://www.googleapis.com/auth/calendar.events",  # read, create, modify, and delete events.
+    # Google Meet
+    "https://www.googleapis.com/auth/meetings.space.created",
+    "https://www.googleapis.com/auth/meetings.space.readonly",
 ]
 
 
