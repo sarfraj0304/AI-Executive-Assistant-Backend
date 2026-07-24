@@ -166,7 +166,6 @@ async def init_graph():
         },
     )
     builder.add_edge("end_cancelled", END)
-    builder.add_edge("chatbot", END)
 
     graph = builder.compile(checkpointer=checkpointer)
     return graph
