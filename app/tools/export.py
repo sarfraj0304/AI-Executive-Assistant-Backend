@@ -8,8 +8,12 @@ from openpyxl import Workbook
 
 load_dotenv()
 
-EXPORT_DIR = "exports"
-BASE_URL = os.getenv("BASE_URL")
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+
+# Backend root directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+EXPORT_DIR = os.path.join(BASE_DIR, "exports")
 
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
@@ -29,7 +33,6 @@ def create_pdf(content: str, file_name: str):
     )
 
     styles = getSampleStyleSheet()
-
     story = []
 
     for line in content.split("\n"):
@@ -66,24 +69,14 @@ def create_excel(data: list[dict], file_name: str):
     sheet = workbook.active
     sheet.title = "Export"
 
-    if not data:
-        workbook.save(file_path)
+    if data:
 
-        return {
-            "success": True,
-            "file_name": unique_name,
-            "file_url": f"{BASE_URL}/exports/{unique_name}",
-        }
+        headers = list(data[0].keys())
 
-    # Headers
-    headers = list(data[0].keys())
+        sheet.append(headers)
 
-    sheet.append(headers)
-
-    # Rows
-    for item in data:
-
-        sheet.append([item.get(header, "") for header in headers])
+        for item in data:
+            sheet.append([item.get(header, "") for header in headers])
 
     workbook.save(file_path)
 

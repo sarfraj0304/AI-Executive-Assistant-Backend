@@ -12,6 +12,8 @@ from app.tools.export import (
     create_pdf,
     create_excel,
 )
+import mimetypes
+import base64
 
 load_dotenv()
 
@@ -244,20 +246,68 @@ def get_email(message_id: str):
 
 
 @mcp.tool()
-def send_email(to: str, subject: str, body: str):
+def send_email(
+    to: list[str],
+    subject: str,
+    body: str,
+    attachments: list[str] | None = None,
+):
     """
-    Send an email.
+    Send an email to one or multiple recipients.
 
-    Use only when the user explicitly asks to send an email.
+    attachments must contain file names returned by export tools.
+
+    IMPORTANT:
+    Use `file_name` from export_to_pdf/export_to_excel.
+    NEVER use `file_url`.
     """
 
     service = get_gmail_service()
 
     message = EmailMessage()
 
-    message["To"] = to
+    message["To"] = ", ".join(to)
     message["Subject"] = subject
     message.set_content(body)
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+
+    if attachments:
+
+        for attachment in attachments:
+
+            # Prevent LLM from creating its own path
+            file_name = os.path.basename(attachment)
+
+            file_path = os.path.join(EXPORT_DIR, file_name)
+
+            if not os.path.exists(file_path):
+                return {
+                    "success": False,
+                    "error": "attachment_not_found",
+                    "message": f"Attachment not found: {file_name}",
+                }
+
+            mime_type, _ = mimetypes.guess_type(file_path)
+
+            if mime_type:
+                main_type, sub_type = mime_type.split("/", 1)
+            else:
+                main_type = "application"
+                sub_type = "octet-stream"
+
+            with open(file_path, "rb") as file:
+                file_data = file.read()
+
+            # THIS creates the real Gmail attachment
+            message.add_attachment(
+                file_data,
+                maintype=main_type,
+                subtype=sub_type,
+                filename=file_name,
+            )
 
     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
@@ -277,6 +327,7 @@ def send_email(to: str, subject: str, body: str):
         "thread_id": result.get("threadId"),
         "to": to,
         "subject": subject,
+        "attachments": [os.path.basename(file) for file in (attachments or [])],
     }
 
 
@@ -526,10 +577,16 @@ def export_to_pdf(
     file_name: str = "document",
 ):
     """
-    Convert text/content into a downloadable PDF file.
+    Create a PDF from text.
 
-    Use when the user asks to export, save,
-    convert or download content as PDF.
+    Returns:
+    - file_name: use this when attaching the PDF with send_email
+    - file_url: use this ONLY when the user wants to download the PDF
+
+    IMPORTANT:
+    If the PDF needs to be emailed as an attachment,
+    pass the returned file_name to send_email attachments.
+    NEVER pass file_url to send_email.
     """
 
     return create_pdf(
@@ -544,11 +601,20 @@ def export_to_excel(
     file_name: str = "export",
 ):
     """
-    Convert structured data into a downloadable Excel file.
+    Create an Excel file from structured data.
 
-    data must be a list of dictionaries.
+    `data` must be a list of dictionaries.
 
-    Example:
+    Returns:
+    - file_name: use this when attaching the Excel file with send_email
+    - file_url: use this ONLY when the user wants to download the Excel file
+
+    IMPORTANT:
+    If the Excel file needs to be emailed as an attachment,
+    pass the returned file_name to send_email attachments.
+    NEVER pass file_url to send_email.
+
+    Example data:
     [
         {"name": "Ahmed", "email": "a@gmail.com"},
         {"name": "John", "email": "j@gmail.com"}
