@@ -1,26 +1,17 @@
 from langgraph.graph import START, END, StateGraph
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, ToolMessage, AIMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from app.state import State
 from app.prompts import SYSTEM_PROMPT
-from app.config import OPENAI_API_KEY, OPENROUTER_API_KEY
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import ToolNode, tools_condition
 import os
 import sys
-from langgraph.types import interrupt
 from app.utils.approval.approval_tools import APPROVAL_REQUIRED_TOOLS
 from langchain_core.tools import StructuredTool
 from app.utils.approval.approval import require_approval
 import json
-
-llm = ChatOpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    model="openrouter/free",
-    temperature=0,
-    api_key=OPENROUTER_API_KEY,
-)
+from app.llms.openrouter_llm import llm
 
 graph = None
 mcp_client = None

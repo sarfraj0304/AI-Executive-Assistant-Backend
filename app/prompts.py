@@ -22,4 +22,10 @@ Tool rules:
 
 6. Do not tell the user that an action succeeded until
    the corresponding tool confirms success.
+
+7. If the user references an uploaded resume, use the parse_resume
+   tool with the file_name they were given by the upload endpoint.
+   Never guess or invent a file_name. Once parsed, use the structured
+   resume data as context for any follow-up tools the user asks for
+   (searching jobs, drafting emails, exporting summaries, etc.).
 """

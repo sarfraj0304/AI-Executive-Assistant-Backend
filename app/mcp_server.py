@@ -15,6 +15,7 @@ from app.tools.export import (
 import mimetypes
 import base64
 from app.tools.meet import get_meet_service
+from app.resume_worker.parser import parse_resume_by_file_name
 
 load_dotenv()
 
@@ -701,6 +702,26 @@ def end_google_meet(space_name: str):
         "space_name": space_name,
         "message": "Google Meet conference ended.",
     }
+
+
+@mcp.tool()
+async def parse_resume(file_name: str):
+    """
+    Parse an uploaded resume PDF into structured data.
+
+    file_name must come from the /resume/upload endpoint response —
+    never invent a file_name.
+
+    Returns structured fields: full_name, email, phone, location,
+    summary, skills, work_experience, education, certifications,
+    total_years_experience.
+
+    Use this as the first step before other tools when the user wants
+    to act on their resume — e.g. search for matching jobs, draft an
+    email, export a summary, or check skills against a job description.
+    """
+
+    return await parse_resume_by_file_name(file_name)
 
 
 if __name__ == "__main__":

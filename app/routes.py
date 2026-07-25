@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.models import ChatRequest
 from app import graph as graph_module
 from langchain_core.messages import HumanMessage, AIMessageChunk, AIMessage
@@ -6,6 +6,7 @@ from app.utils.format_messages import format_messages
 from langgraph.types import Command
 from fastapi.responses import StreamingResponse
 import json
+from app.resume_worker.parser import save_uploaded_resume
 
 router = APIRouter()
 
@@ -143,6 +144,35 @@ async def chat(request: ChatRequest):
         "status": "completed",
         "response": messages,
         "total_records": len(messages),
+    }
+
+
+@router.post("/resume/upload")
+async def uploadResume(file: UploadFile = File(...)):
+    """
+    Upload a resume PDF so the agent can work with it.
+
+    This does NOT parse the resume — it just stores the file and
+    returns a file_name. Reference that file_name in chat (e.g.
+    "parse the resume I just uploaded, file_name: <name>") and the
+    agent will call the parse_resume tool itself, then can chain
+    other tools (search, export, email, calendar, ...) on the result.
+    """
+
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    file_bytes = await file.read()
+
+    file_name = save_uploaded_resume(file_bytes, file.filename)
+
+    return {
+        "success": True,
+        "file_name": file_name,
+        "message": (
+            "Resume uploaded. Send this file_name in your next chat "
+            "message so the agent can parse and use it."
+        ),
     }
 
 
