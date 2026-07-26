@@ -26,6 +26,29 @@ graph = None
 mcp_client = None
 
 
+TOOL_REGISTRY: dict[str, dict] = {}
+
+
+def build_tool_registry(tools) -> dict[str, dict]:
+    registry = {}
+    for tool in tools:
+        description = (tool.description or "").strip()
+        first_line = ""
+        for line in description.splitlines():
+            line = line.strip()
+            if line:
+                first_line = line
+                break
+
+        label = first_line or tool.name.replace("_", " ").strip().capitalize()
+
+        registry[tool.name] = {
+            "label": label,
+            "description": description,
+        }
+    return registry
+
+
 def wrap_tool_with_approval(tool):
 
     if tool.name not in APPROVAL_REQUIRED_TOOLS:
@@ -123,7 +146,7 @@ def end_cancelled(state: State):
 
 
 async def init_graph():
-    global graph, mcp_client
+    global graph, mcp_client, TOOL_REGISTRY
     mcp_client = MultiServerMCPClient(
         {
             "assistant": {
@@ -137,6 +160,9 @@ async def init_graph():
 
     mcp_tools = await mcp_client.get_tools()
     tools = [wrap_tool_with_approval(tool) for tool in mcp_tools]
+
+    TOOL_REGISTRY = build_tool_registry(tools)
+
     llm_with_tools = llm.bind_tools(tools)
 
     async def chatbot(state: State):
