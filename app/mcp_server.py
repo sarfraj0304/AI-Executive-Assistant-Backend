@@ -703,5 +703,104 @@ def end_google_meet(space_name: str):
     }
 
 
+@mcp.tool()
+def list_email_attachments(message_id: str):
+    """
+    List all attachments in a Gmail message (filename, mimeType, size, attachment_id).
+
+    Use this before download_email_attachment to discover what's
+    available and get the attachment_id needed to download it.
+    """
+
+    service = get_gmail_service()
+
+    message = (
+        service.users()
+        .messages()
+        .get(userId="me", id=message_id, format="full")
+        .execute()
+    )
+
+    attachments = []
+
+    def walk_parts(payload):
+        filename = payload.get("filename")
+        body = payload.get("body", {})
+
+        if filename and body.get("attachmentId"):
+            attachments.append(
+                {
+                    "filename": filename,
+                    "mime_type": payload.get("mimeType", "application/octet-stream"),
+                    "size": body.get("size", 0),
+                    "attachment_id": body["attachmentId"],
+                }
+            )
+
+        for part in payload.get("parts", []):
+            walk_parts(part)
+
+    walk_parts(message["payload"])
+
+    return {
+        "message_id": message_id,
+        "attachments": attachments,
+    }
+
+
+@mcp.tool()
+def download_email_attachment(
+    message_id: str,
+    attachment_id: str,
+    file_name: str,
+):
+    """
+    Download a Gmail attachment and save it locally.
+
+    Use list_email_attachments first to get the attachment_id
+    and the original filename (pass that as file_name, or your
+    own name — the original extension will be kept if you don't
+    include one).
+
+    Returns:
+    - file_name: use this when attaching the file with send_email
+    - file_path: local path where the file was saved
+
+    IMPORTANT:
+    Use the returned `file_name` with send_email attachments,
+    the same way export_to_pdf/export_to_excel results are used.
+    """
+
+    service = get_gmail_service()
+
+    attachment = (
+        service.users()
+        .messages()
+        .attachments()
+        .get(userId="me", messageId=message_id, id=attachment_id)
+        .execute()
+    )
+
+    file_data = base64.urlsafe_b64decode(attachment["data"])
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+    os.makedirs(EXPORT_DIR, exist_ok=True)
+
+    # Prevent LLM from writing outside EXPORT_DIR
+    safe_name = os.path.basename(file_name)
+    file_path = os.path.join(EXPORT_DIR, safe_name)
+
+    with open(file_path, "wb") as f:
+        f.write(file_data)
+
+    return {
+        "success": True,
+        "file_name": safe_name,
+        "file_path": file_path,
+        "size": len(file_data),
+    }
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
