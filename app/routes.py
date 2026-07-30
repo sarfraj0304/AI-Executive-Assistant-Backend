@@ -6,8 +6,12 @@ from app.utils.format_messages import format_messages
 from langgraph.types import Command
 from fastapi.responses import StreamingResponse
 import json
+import shutil
+from pathlib import Path
 
 router = APIRouter()
+
+EXPORTS_BASE_DIR = Path("exports")
 
 
 def sse(event: str, data: dict) -> str:
@@ -214,4 +218,34 @@ async def allChats(thread_id: str):
         "thread_id": thread_id,
         "response": message,
         "total_records": len(message),
+    }
+
+
+@router.delete("/chat/{thread_id}")
+async def clearChat(thread_id: str):
+    config = {"configurable": {"thread_id": thread_id}}
+
+    state = graph_module.graph.get_state(config)
+    if not state.values:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    try:
+        await graph_module.graph.checkpointer.adelete_thread(thread_id)
+    except AttributeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Checkpointer does not support thread deletion; implement manual cleanup.",
+        )
+
+    thread_export_dir = EXPORTS_BASE_DIR / thread_id
+    deleted_files = 0
+    if thread_export_dir.exists():
+        deleted_files = sum(1 for _ in thread_export_dir.rglob("*") if _.is_file())
+        shutil.rmtree(thread_export_dir)
+
+    return {
+        "thread_id": thread_id,
+        "status": "cleared",
+        "history_cleared": True,
+        "files_deleted": deleted_files,
     }
