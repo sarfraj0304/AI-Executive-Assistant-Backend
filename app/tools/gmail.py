@@ -17,101 +17,73 @@ SCOPES = [
 ]
 
 
-def is_render():
-    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_ID") is not None
+def get_file_path(filename: str) -> str | None:
+    """
+    Prefer local file.
+    If not present, use Render Secret File.
+    """
+    if os.path.exists(filename):
+        return filename
 
+    secret_path = f"/etc/secrets/{filename}"
 
-def restore_token():
-    """Restore token.json from environment variable on Render."""
-    if os.path.exists("token.json"):
-        return
+    if os.path.exists(secret_path):
+        return secret_path
 
-    token = os.getenv("GOOGLE_TOKEN_JSON")
-
-    if token:
-        with open("token.json", "w", encoding="utf-8") as f:
-            f.write(token)
+    return None
 
 
 def get_google_credentials():
 
-    restore_token()
+    token_path = get_file_path("token.json")
+    credentials_path = get_file_path("credentials.json")
 
     print("=" * 60)
-    print("Running on Render :", is_render())
     print("Current directory :", os.getcwd())
-    print("token.json exists :", os.path.exists("token.json"))
-    print("credentials exists:", os.path.exists("credentials.json"))
-    print("GOOGLE_TOKEN_JSON :", bool(os.getenv("GOOGLE_TOKEN_JSON")))
+    print("Token path        :", token_path)
+    print("Credentials path  :", credentials_path)
     print("=" * 60)
 
     creds = None
 
-    if os.path.exists("token.json"):
+    if token_path:
         try:
             creds = Credentials.from_authorized_user_file(
-                "token.json",
+                token_path,
                 SCOPES,
             )
         except Exception as e:
-            print("Failed to load token.json:", e)
-            creds = None
+            print("Failed to load token:", e)
 
-    # Already valid
+    # Already authenticated
     if creds and creds.valid:
         return creds
 
-    # Refresh expired access token
+    # Refresh token
     if creds and creds.expired and creds.refresh_token:
 
         try:
-            print("Refreshing Google access token...")
+            print("Refreshing Google token...")
 
             creds.refresh(Request())
 
-            with open("token.json", "w") as f:
-                f.write(creds.to_json())
+            # Save only if local file exists
+            if token_path == "token.json":
+                with open("token.json", "w") as f:
+                    f.write(creds.to_json())
 
             return creds
 
         except RefreshError as e:
+            print("Refresh failed:", e)
 
-            print("Token refresh failed:", str(e))
+    # Local machine -> Browser login
+    if credentials_path == "credentials.json":
 
-            # Local machine → login again
-            if not is_render():
-
-                if os.path.exists("token.json"):
-                    os.remove("token.json")
-
-                print("Running local OAuth flow...")
-
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json",
-                    SCOPES,
-                )
-
-                creds = flow.run_local_server(port=0)
-
-                with open("token.json", "w") as f:
-                    f.write(creds.to_json())
-
-                return creds
-
-            # Render → cannot login
-            raise RuntimeError(
-                "GOOGLE_TOKEN_JSON is invalid or revoked. "
-                "Generate a new token locally and update "
-                "the GOOGLE_TOKEN_JSON environment variable."
-            )
-
-    # No token found
-    if not is_render():
-
-        print("Running local OAuth flow...")
+        print("Running OAuth login...")
 
         flow = InstalledAppFlow.from_client_secrets_file(
-            "credentials.json",
+            credentials_path,
             SCOPES,
         )
 
@@ -122,7 +94,13 @@ def get_google_credentials():
 
         return creds
 
-    raise RuntimeError("No valid GOOGLE_TOKEN_JSON found on Render.")
+    # Render -> Cannot login
+    raise RuntimeError(
+        "Google authentication failed.\n"
+        "Make sure BOTH Secret Files exist:\n"
+        " - credentials.json\n"
+        " - token.json"
+    )
 
 
 def get_gmail_service():
