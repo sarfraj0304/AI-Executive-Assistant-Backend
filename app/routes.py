@@ -258,11 +258,12 @@ async def clearChat(thread_id: str):
             detail="Checkpointer does not support thread deletion; implement manual cleanup.",
         )
 
-    thread_export_dir = EXPORTS_BASE_DIR / thread_id
     deleted_files = 0
-    if thread_export_dir.exists():
-        deleted_files = sum(1 for _ in thread_export_dir.rglob("*") if _.is_file())
-        shutil.rmtree(thread_export_dir)
+    if EXPORTS_BASE_DIR.exists():
+        for file_path in EXPORTS_BASE_DIR.iterdir():
+            if file_path.is_file():
+                file_path.unlink()
+                deleted_files += 1
 
     return {
         "thread_id": thread_id,
