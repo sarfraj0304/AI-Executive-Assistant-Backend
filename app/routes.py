@@ -249,3 +249,8 @@ async def clearChat(thread_id: str):
         "history_cleared": True,
         "files_deleted": deleted_files,
     }
+
+
+@router.get("/healthz")
+async def health_check():
+    return {"status": "ok"}
