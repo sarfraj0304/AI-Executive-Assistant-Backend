@@ -1,8 +1,9 @@
 import os
-import json
+
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 
 SCOPES = [
@@ -16,51 +17,114 @@ SCOPES = [
 ]
 
 
-def _restore_token_from_env():
-    """
-    On Render (and any ephemeral filesystem), token.json won't exist
-    after a deploy, and there's no browser to run the OAuth consent
-    flow. Restore it from an env var set once from your local token.json.
-    """
+def is_render():
+    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_ID") is not None
+
+
+def restore_token():
+    """Restore token.json from environment variable on Render."""
     if os.path.exists("token.json"):
         return
 
-    token_json = os.getenv("GOOGLE_TOKEN_JSON")
-    if token_json:
-        with open("token.json", "w") as f:
-            f.write(token_json)
+    token = os.getenv("GOOGLE_TOKEN_JSON")
+
+    if token:
+        with open("token.json", "w", encoding="utf-8") as f:
+            f.write(token)
 
 
 def get_google_credentials():
 
-    _restore_token_from_env()
+    restore_token()
 
-    credentials = None
+    print("=" * 60)
+    print("Running on Render :", is_render())
+    print("Current directory :", os.getcwd())
+    print("token.json exists :", os.path.exists("token.json"))
+    print("credentials exists:", os.path.exists("credentials.json"))
+    print("GOOGLE_TOKEN_JSON :", bool(os.getenv("GOOGLE_TOKEN_JSON")))
+    print("=" * 60)
+
+    creds = None
 
     if os.path.exists("token.json"):
-        credentials = Credentials.from_authorized_user_file(
-            "token.json",
+        try:
+            creds = Credentials.from_authorized_user_file(
+                "token.json",
+                SCOPES,
+            )
+        except Exception as e:
+            print("Failed to load token.json:", e)
+            creds = None
+
+    # Already valid
+    if creds and creds.valid:
+        return creds
+
+    # Refresh expired access token
+    if creds and creds.expired and creds.refresh_token:
+
+        try:
+            print("Refreshing Google access token...")
+
+            creds.refresh(Request())
+
+            with open("token.json", "w") as f:
+                f.write(creds.to_json())
+
+            return creds
+
+        except RefreshError as e:
+
+            print("Token refresh failed:", str(e))
+
+            # Local machine → login again
+            if not is_render():
+
+                if os.path.exists("token.json"):
+                    os.remove("token.json")
+
+                print("Running local OAuth flow...")
+
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    "credentials.json",
+                    SCOPES,
+                )
+
+                creds = flow.run_local_server(port=0)
+
+                with open("token.json", "w") as f:
+                    f.write(creds.to_json())
+
+                return creds
+
+            # Render → cannot login
+            raise RuntimeError(
+                "GOOGLE_TOKEN_JSON is invalid or revoked. "
+                "Generate a new token locally and update "
+                "the GOOGLE_TOKEN_JSON environment variable."
+            )
+
+    # No token found
+    if not is_render():
+
+        print("Running local OAuth flow...")
+
+        flow = InstalledAppFlow.from_client_secrets_file(
+            "credentials.json",
             SCOPES,
         )
 
-    if not credentials or not credentials.valid:
+        creds = flow.run_local_server(port=0)
 
-        if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
+        with open("token.json", "w") as f:
+            f.write(creds.to_json())
 
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json",
-                SCOPES,
-            )
-            credentials = flow.run_local_server(port=0)
+        return creds
 
-        with open("token.json", "w") as token:
-            token.write(credentials.to_json())
-
-    return credentials
+    raise RuntimeError("No valid GOOGLE_TOKEN_JSON found on Render.")
 
 
 def get_gmail_service():
-    credentials = get_google_credentials()
-    return build("gmail", "v1", credentials=credentials)
+    creds = get_google_credentials()
+    return build("gmail", "v1", credentials=creds)
