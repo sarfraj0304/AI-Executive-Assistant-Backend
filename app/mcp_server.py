@@ -15,12 +15,16 @@ from app.tools.export import (
 import mimetypes
 import base64
 from app.tools.meet import get_meet_service
+from pypdf import PdfReader
+from docx import Document
 
 load_dotenv()
 
 API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
 mcp = FastMCP("chatbot_mcp")
+
+MAX_CHARS = 15000
 
 
 @mcp.tool()
@@ -799,6 +803,127 @@ def download_email_attachment(
         "file_name": safe_name,
         "file_path": file_path,
         "size": len(file_data),
+    }
+
+
+def _read_pdf(path, max_pages=20):
+    reader = PdfReader(path)
+    pages_to_read = min(len(reader.pages), max_pages)
+    text = "\n\n".join(
+        f"--- Page {i+1} ---\n{(reader.pages[i].extract_text() or '').strip()}"
+        for i in range(pages_to_read)
+    )
+    return text, {"total_pages": len(reader.pages), "pages_read": pages_to_read}
+
+
+def _read_docx(path):
+    doc = Document(path)
+    text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    return text, {"paragraphs": len(doc.paragraphs)}
+
+
+def _read_csv(path, max_rows=200):
+    rows = []
+    with open(path, newline="", encoding="utf-8", errors="ignore") as f:
+        reader = csv.reader(f)
+        for i, row in enumerate(reader):
+            if i >= max_rows:
+                break
+            rows.append(", ".join(row))
+    text = "\n".join(rows)
+    return text, {"rows_read": len(rows)}
+
+
+def _read_xlsx(path, max_rows=200):
+    wb = load_workbook(path, read_only=True, data_only=True)
+    chunks = []
+    meta = {"sheets": wb.sheetnames}
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        chunks.append(f"--- Sheet: {sheet_name} ---")
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i >= max_rows:
+                chunks.append(f"... (truncated after {max_rows} rows)")
+                break
+            chunks.append(", ".join("" if c is None else str(c) for c in row))
+    return "\n".join(chunks), meta
+
+
+def _read_txt(path):
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+    return text, {}
+
+
+READERS = {
+    ".pdf": _read_pdf,
+    ".docx": _read_docx,
+    ".csv": _read_csv,
+    ".xlsx": _read_xlsx,
+    ".xls": _read_xlsx,
+    ".txt": _read_txt,
+}
+
+
+@mcp.tool()
+def read_file(file_name: str):
+    """
+    Extract and return the text/data content of an uploaded or attached
+    file so it can be read, summarized, or answered questions about.
+
+    Supports: .pdf, .docx, .csv, .xlsx, .xls, .txt
+
+    Image files (.png, .jpg, .jpeg) are NOT supported by this tool —
+    it cannot extract text from images.
+
+    file_name must be a file already available in the exports directory —
+    e.g. one just uploaded by the user, or returned by export_to_pdf /
+    export_to_excel / download_email_attachment.
+
+    Use this whenever the user asks you to read, open, summarize,
+    explain, or answer questions about an uploaded or attached file.
+    """
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+
+    safe_name = os.path.basename(file_name)
+    file_path = os.path.join(EXPORT_DIR, safe_name)
+    ext = os.path.splitext(safe_name)[1].lower()
+
+    if not os.path.exists(file_path):
+        return {
+            "success": False,
+            "error": "file_not_found",
+            "message": f"Could not find '{safe_name}' in exports. "
+            f"Make sure it was uploaded first.",
+        }
+
+    reader_fn = READERS.get(ext)
+    if not reader_fn:
+        return {
+            "success": False,
+            "error": "unsupported_file_type",
+            "message": f"Cannot read '{ext}' files. Supported types: "
+            f"{', '.join(READERS.keys())}. Image files are not readable as text.",
+        }
+
+    try:
+        text, meta = reader_fn(file_path)
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "read_failed",
+            "message": f"Failed to read '{safe_name}': {str(e)}",
+        }
+
+    truncated = len(text) > MAX_CHARS
+    return {
+        "success": True,
+        "file_name": safe_name,
+        "file_type": ext,
+        "truncated": truncated,
+        "text": text[:MAX_CHARS],
+        **meta,
     }
 
 

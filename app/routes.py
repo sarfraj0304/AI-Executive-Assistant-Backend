@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.models import ChatRequest
 from app import graph as graph_module
 from langchain_core.messages import HumanMessage, AIMessageChunk, AIMessage, ToolMessage
@@ -8,15 +8,36 @@ from fastapi.responses import StreamingResponse
 import json
 import shutil
 from pathlib import Path
+import os
 
 router = APIRouter()
 
 EXPORTS_BASE_DIR = Path("exports")
+ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".xlsx",
+    ".xls",
+    ".csv",
+    ".docx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".txt",
+}
+MAX_UPLOAD_SIZE = 15 * 1024 * 1024
 
 
 def sse(event: str, data: dict) -> str:
     """Format a Server-Sent Event."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def build_user_content(request: ChatRequest) -> str:
+    content = request.message
+    if request.attached_files:
+        files_note = ", ".join(request.attached_files)
+        content = f"{content}\n\n[Attached files available for use: {files_note}]"
+    return content
 
 
 async def stream_graph_response(request: ChatRequest):
@@ -28,7 +49,7 @@ async def stream_graph_response(request: ChatRequest):
     if resuming:
         input_ = Command(resume=request.message)
     else:
-        input_ = {"messages": [HumanMessage(content=request.message)]}
+        input_ = {"messages": [HumanMessage(content=build_user_content(request))]}
 
     streamed_any = False  # track whether any LLM token actually streamed
 
@@ -177,7 +198,7 @@ async def chat(request: ChatRequest):
     else:
 
         result = await graph_module.graph.ainvoke(
-            {"messages": [HumanMessage(content=request.message)]},
+            {"messages": [HumanMessage(content=build_user_content(request))]},
             config=config,
         )
 
@@ -248,6 +269,41 @@ async def clearChat(thread_id: str):
         "status": "cleared",
         "history_cleared": True,
         "files_deleted": deleted_files,
+    }
+
+
+@router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' is not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}",
+        )
+    EXPORTS_BASE_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = os.path.basename(file.filename)
+    dest_path = EXPORTS_BASE_DIR / safe_name
+    stem, suffix = os.path.splitext(safe_name)
+    counter = 1
+    while dest_path.exists():
+        dest_path = EXPORTS_BASE_DIR / f"{stem}_{counter}{suffix}"
+        counter += 1
+
+    size = 0
+    with open(dest_path, "wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_SIZE:
+                out.close()
+                dest_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=400, detail="File too large (max 15MB)")
+            out.write(chunk)
+
+    return {
+        "success": True,
+        "file_name": dest_path.name,
+        "size": size,
+        "content_type": file.content_type,
     }
 
 
