@@ -14,7 +14,7 @@ DB_NAME = os.getenv("MONGODB_DB_NAME")
 # Fernet key used to encrypt Google refresh/access tokens at rest.
 # Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 TOKEN_ENCRYPTION_KEY = os.getenv("TOKEN_ENCRYPTION_KEY")
-print("TOKEN_ENCRYPTION_KEY:", TOKEN_ENCRYPTION_KEY)
+
 if not TOKEN_ENCRYPTION_KEY:
     raise RuntimeError(
         "TOKEN_ENCRYPTION_KEY is not set. Generate one with:\n"

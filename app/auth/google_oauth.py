@@ -97,10 +97,6 @@ async def google_callback(request: Request):
         )
 
     flow.code_verifier = verifier
-    print("Redirect URI :", OAUTH_REDIRECT_URI)
-    print("State :", request.session.get("oauth_state"))
-    print("Verifier :", request.session.get("code_verifier"))
-    print("Code :", code[:20], "...")
     flow.fetch_token(code=code)
     credentials = flow.credentials
 
