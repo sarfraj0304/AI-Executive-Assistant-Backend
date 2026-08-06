@@ -1,10 +1,11 @@
-import os
+import json
 
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
+
+from app.db import get_user_by_id, decrypt_tokens, save_refreshed_tokens
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -17,92 +18,43 @@ SCOPES = [
 ]
 
 
-def get_file_path(filename: str) -> str | None:
+async def get_google_credentials(user_id: str) -> Credentials:
     """
-    Prefer local file.
-    If not present, use Render Secret File.
+    Loads this user's Google credentials from MongoDB (decrypting the
+    stored token blob), refreshing + persisting a new access token if
+    it has expired.
     """
-    if os.path.exists(filename):
-        return filename
+    user = await get_user_by_id(user_id)
+    if not user or not user.get("google_tokens"):
+        raise RuntimeError(
+            "This account isn't connected to Google. Please sign in with "
+            "Google to grant Gmail/Calendar/Meet access."
+        )
 
-    secret_path = f"/etc/secrets/{filename}"
+    token_dict = decrypt_tokens(user["google_tokens"])
+    creds = Credentials.from_authorized_user_info(token_dict, SCOPES)
 
-    if os.path.exists(secret_path):
-        return secret_path
-
-    return None
-
-
-def get_google_credentials():
-
-    token_path = get_file_path("token.json")
-    credentials_path = get_file_path("credentials.json")
-
-    print("=" * 60)
-    print("Current directory :", os.getcwd())
-    print("Token path        :", token_path)
-    print("Credentials path  :", credentials_path)
-    print("=" * 60)
-
-    creds = None
-
-    if token_path:
-        try:
-            creds = Credentials.from_authorized_user_file(
-                token_path,
-                SCOPES,
-            )
-        except Exception as e:
-            print("Failed to load token:", e)
-
-    # Already authenticated
     if creds and creds.valid:
         return creds
 
-    # Refresh token
     if creds and creds.expired and creds.refresh_token:
-
         try:
-            print("Refreshing Google token...")
-
             creds.refresh(Request())
-
-            # Save only if local file exists
-            if token_path == "token.json":
-                with open("token.json", "w") as f:
-                    f.write(creds.to_json())
-
-            return creds
-
         except RefreshError as e:
-            print("Refresh failed:", e)
+            raise RuntimeError(
+                "Google access has expired and could not be refreshed. "
+                "Please sign in with Google again to reconnect."
+            ) from e
 
-    # Local machine -> Browser login
-    if credentials_path == "credentials.json":
-
-        print("Running OAuth login...")
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            credentials_path,
-            SCOPES,
-        )
-
-        creds = flow.run_local_server(port=0)
-
-        with open("token.json", "w") as f:
-            f.write(creds.to_json())
-
+        # Persist the refreshed access token so we don't refresh every call.
+        await save_refreshed_tokens(user_id, json.loads(creds.to_json()))
         return creds
 
-    # Render -> Cannot login
     raise RuntimeError(
-        "Google authentication failed.\n"
-        "Make sure BOTH Secret Files exist:\n"
-        " - credentials.json\n"
-        " - token.json"
+        "Google credentials are invalid. Please sign in with Google again."
     )
 
 
-def get_gmail_service():
-    creds = get_google_credentials()
+async def get_gmail_service(user_id: str):
+    creds = await get_google_credentials(user_id)
     return build("gmail", "v1", credentials=creds)
