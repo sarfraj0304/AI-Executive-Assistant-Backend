@@ -155,6 +155,7 @@ async def init_graph():
                 "args": ["-m", "app.mcp_server"],
                 "transport": "stdio",
                 "cwd": os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "env": dict(os.environ),
             }
         },
         tool_interceptors=[inject_user_context],
