@@ -64,7 +64,7 @@ def _build_flow() -> Flow:
 @router.get("/login")
 async def google_login(request: Request):
     flow = _build_flow()
-
+    print("Redirect URI:", OAUTH_REDIRECT_URI)
     auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -124,8 +124,9 @@ async def google_callback(request: Request):
         key=SESSION_COOKIE_NAME,
         value=session_token,
         httponly=True,
-        secure=True,  # requires HTTPS in production; set False only for local http testing
-        samesite="lax",
+        secure=True,
+        samesite="none",
+        path="/",
         max_age=JWT_EXPIRE_DAYS * 24 * 60 * 60,
     )
     return response
