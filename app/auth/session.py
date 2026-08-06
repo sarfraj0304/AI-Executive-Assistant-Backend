@@ -47,3 +47,20 @@ def get_current_user_id(request: Request) -> str:
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in.")
     return decode_session_token(token)
+
+
+def get_current_user_id_optional(request: Request) -> str | None:
+    """
+    Same as get_current_user_id, but returns None for guests instead of
+    raising. Used on endpoints that should work for signed-out visitors
+    (e.g. /chat/stream, where a guest can chat normally and only gets
+    blocked at the point a Google tool is actually needed).
+    """
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        return None
+    try:
+        return decode_session_token(token)
+    except HTTPException:
+        # expired/invalid cookie — treat as a guest rather than erroring
+        return None

@@ -11,6 +11,27 @@ the model has already decided which tool to call and with what arguments.
 
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
+
+class LoginRequiredError(Exception):
+    """
+    Raised when a Google-dependent tool is called with no signed-in user.
+    LangGraph's ToolNode catches tool exceptions and turns them into a
+    ToolMessage(status="error", content=str(exc)) rather than letting them
+    propagate — so app/routes.py detects this by checking tool_end events
+    for the LOGIN_REQUIRED_MARKER prefix, rather than catching this
+    exception type directly.
+    """
+
+    MARKER = "__LOGIN_REQUIRED__"
+
+    def __init__(self, tool_name: str):
+        self.tool_name = tool_name
+        super().__init__(
+            f"{self.MARKER}Cannot call '{tool_name}': no authenticated user. "
+            f"Sign in with Google to use email, calendar, and meeting features."
+        )
+
+
 # Tools that need to know which user's Google account to act on.
 GOOGLE_TOOLS = {
     "get_recent_emails",
@@ -38,9 +59,7 @@ async def inject_user_context(request: MCPToolCallRequest, handler):
         user_id = getattr(getattr(runtime, "context", None), "user_id", None)
 
         if not user_id:
-            raise RuntimeError(
-                f"Cannot call '{request.name}': no authenticated user_id in context."
-            )
+            raise LoginRequiredError(request.name)
 
         request = request.override(args={**request.args, "user_id": user_id})
 

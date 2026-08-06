@@ -134,6 +134,6 @@ async def google_callback(request: Request):
 
 @router.post("/logout")
 async def google_logout():
-    response = RedirectResponse(f"{FRONTEND_URL}/login")
+    response = RedirectResponse(f"{FRONTEND_URL}/")
     response.delete_cookie(SESSION_COOKIE_NAME)
     return response

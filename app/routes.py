@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request
 from app.models import ChatRequest
 from app import graph as graph_module
 from app.state import Context
-from app.auth.session import get_current_user_id
+from app.auth.session import get_current_user_id, get_current_user_id_optional
+from app.mcp_interceptors import LoginRequiredError
 from app.db import get_user_by_id
 from langchain_core.messages import HumanMessage, AIMessageChunk, AIMessage, ToolMessage
 from app.utils.format_messages import format_messages
@@ -12,17 +13,22 @@ import json
 import shutil
 from pathlib import Path
 import os
+import uuid
 
 router = APIRouter()
 
 
-def user_thread_id(user_id: str) -> str:
+def user_thread_id(user_id: str | None, guest_id: str | None = None) -> str:
     """
-    Every user gets their own LangGraph checkpointer thread, so chat
-    history and state never bleed across accounts. The frontend no
-    longer needs to know or send a thread_id.
+    Signed-in users get a stable per-account thread (`user-<id>`), so their
+    history persists across visits. Guests get an ephemeral thread scoped
+    to a random id generated per browser session (see /chat/stream) so
+    concurrent anonymous visitors never share state, but nothing is kept
+    long-term for them.
     """
-    return f"user-{user_id}"
+    if user_id:
+        return f"user-{user_id}"
+    return f"guest-{guest_id}"
 
 
 @router.get("/me")
@@ -40,6 +46,7 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
 
 
 EXPORTS_BASE_DIR = Path("exports")
+GUEST_COOKIE_NAME = "guest_id"
 ALLOWED_EXTENSIONS = {
     ".pdf",
     ".xlsx",
@@ -67,8 +74,10 @@ def build_user_content(request: ChatRequest) -> str:
     return content
 
 
-async def stream_graph_response(request: ChatRequest, user_id: str):
-    thread_id = user_thread_id(user_id)
+async def stream_graph_response(
+    request: ChatRequest, user_id: str | None, guest_id: str | None
+):
+    thread_id = user_thread_id(user_id, guest_id)
     config = {"configurable": {"thread_id": thread_id}}
     context = Context(user_id=user_id)
     state = graph_module.graph.get_state(config)
@@ -144,15 +153,40 @@ async def stream_graph_response(request: ChatRequest, user_id: str):
 
             # --- 3. Tool has finished executing and returned a result ---
             elif isinstance(msg_chunk, ToolMessage):
+                is_error = msg_chunk.status == "error"
+                content_str = (
+                    msg_chunk.content
+                    if isinstance(msg_chunk.content, str)
+                    else str(msg_chunk.content)
+                )
+
+                if is_error and LoginRequiredError.MARKER in content_str:
+                    yield sse(
+                        "login_required",
+                        {
+                            "message": "Sign in with Google to use email, calendar, and meeting features.",
+                        },
+                    )
+                    return
+
                 yield sse(
                     "tool_end",
                     {
                         "tool_call_id": msg_chunk.tool_call_id,
                         "tool_name": msg_chunk.name,
                         "node": node,
-                        "status": "error" if msg_chunk.status == "error" else "success",
+                        "status": "error" if is_error else "success",
                     },
                 )
+
+    except LoginRequiredError:
+        yield sse(
+            "login_required",
+            {
+                "message": "Sign in with Google to use email, calendar, and meeting features.",
+            },
+        )
+        return
 
     except Exception as e:
         yield sse("error", {"message": str(e)})
@@ -197,9 +231,22 @@ async def stream_graph_response(request: ChatRequest, user_id: str):
 
 
 @router.post("/chat/stream")
-async def streamChat(request: ChatRequest, user_id: str = Depends(get_current_user_id)):
-    return StreamingResponse(
-        stream_graph_response(request, user_id),
+async def streamChat(
+    request: ChatRequest,
+    http_request: Request,
+    user_id: str | None = Depends(get_current_user_id_optional),
+):
+    guest_id = None
+    set_guest_cookie = False
+
+    if not user_id:
+        guest_id = http_request.cookies.get(GUEST_COOKIE_NAME)
+        if not guest_id:
+            guest_id = uuid.uuid4().hex
+            set_guest_cookie = True
+
+    response = StreamingResponse(
+        stream_graph_response(request, user_id, guest_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -207,6 +254,22 @@ async def streamChat(request: ChatRequest, user_id: str = Depends(get_current_us
             "X-Accel-Buffering": "no",
         },
     )
+
+    if set_guest_cookie:
+        # Lets an anonymous visitor keep a consistent (but unlinked-to-any-
+        # account) conversation thread across messages in the same browser,
+        # without requiring sign-in. Cleared automatically when they log in
+        # (their real user_id thread takes over).
+        response.set_cookie(
+            key=GUEST_COOKIE_NAME,
+            value=guest_id,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=7 * 24 * 60 * 60,
+        )
+
+    return response
 
 
 @router.post("/chat")

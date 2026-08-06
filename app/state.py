@@ -15,4 +15,4 @@ class Context:
     tool calls without the LLM ever seeing or choosing that argument.
     """
 
-    user_id: str
+    user_id: str | None = None
