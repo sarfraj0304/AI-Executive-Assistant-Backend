@@ -135,5 +135,13 @@ async def google_callback(request: Request):
 @router.post("/logout")
 async def google_logout():
     response = RedirectResponse(f"{FRONTEND_URL}/")
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    # delete_cookie must be called with the SAME path/samesite/secure
+    # attributes used in set_cookie above, or the browser treats it as a
+    # different cookie and the original session cookie survives "logout".
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=True,
+        samesite="none",
+    )
     return response
