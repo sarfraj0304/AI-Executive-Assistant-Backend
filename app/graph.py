@@ -2,7 +2,8 @@ from langgraph.graph import START, END, StateGraph
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, ToolMessage, AIMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from app.state import State
+from app.state import State, Context
+from app.mcp_interceptors import inject_user_context
 from app.prompts import SYSTEM_PROMPT
 from app.config import OPENAI_API_KEY, OPENROUTER_API_KEY
 from langgraph.checkpoint.memory import InMemorySaver
@@ -155,7 +156,8 @@ async def init_graph():
                 "transport": "stdio",
                 "cwd": os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             }
-        }
+        },
+        tool_interceptors=[inject_user_context],
     )
 
     mcp_tools = await mcp_client.get_tools()
@@ -173,7 +175,7 @@ async def init_graph():
 
     checkpointer = InMemorySaver()
 
-    builder = StateGraph(State)
+    builder = StateGraph(State, context_schema=Context)
     builder.add_node("chatbot", chatbot)
     builder.add_node("tools", ToolNode(tools))
     builder.add_node("end_cancelled", end_cancelled)

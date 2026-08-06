@@ -46,6 +46,7 @@ langgraph-sdk==0.4.2
 langsmith==0.10.9
 lxml==6.1.1
 mcp==1.28.1
+motor==3.6.0
 multidict==6.7.1
 oauthlib==3.3.1
 openai==2.46.0
@@ -64,6 +65,7 @@ pydantic==2.13.4
 pydantic-settings==2.14.2
 pydantic_core==2.46.4
 PyJWT==2.13.0
+pymongo==4.10.1
 pyparsing==3.3.2
 pypdf==5.1.0
 python-docx==1.1.2

@@ -1,6 +1,9 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request
 from app.models import ChatRequest
 from app import graph as graph_module
+from app.state import Context
+from app.auth.session import get_current_user_id
+from app.db import get_user_by_id
 from langchain_core.messages import HumanMessage, AIMessageChunk, AIMessage, ToolMessage
 from app.utils.format_messages import format_messages
 from langgraph.types import Command
@@ -11,6 +14,30 @@ from pathlib import Path
 import os
 
 router = APIRouter()
+
+
+def user_thread_id(user_id: str) -> str:
+    """
+    Every user gets their own LangGraph checkpointer thread, so chat
+    history and state never bleed across accounts. The frontend no
+    longer needs to know or send a thread_id.
+    """
+    return f"user-{user_id}"
+
+
+@router.get("/me")
+async def get_me(user_id: str = Depends(get_current_user_id)):
+    """Returns the signed-in user's basic profile, for the frontend to render the sidebar."""
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {
+        "id": user["_id"],
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "picture": user.get("picture"),
+    }
+
 
 EXPORTS_BASE_DIR = Path("exports")
 ALLOWED_EXTENSIONS = {
@@ -40,8 +67,10 @@ def build_user_content(request: ChatRequest) -> str:
     return content
 
 
-async def stream_graph_response(request: ChatRequest):
-    config = {"configurable": {"thread_id": request.thread_id}}
+async def stream_graph_response(request: ChatRequest, user_id: str):
+    thread_id = user_thread_id(user_id)
+    config = {"configurable": {"thread_id": thread_id}}
+    context = Context(user_id=user_id)
     state = graph_module.graph.get_state(config)
 
     resuming = bool(state.tasks and any(task.interrupts for task in state.tasks))
@@ -61,6 +90,7 @@ async def stream_graph_response(request: ChatRequest):
         async for msg_chunk, metadata in graph_module.graph.astream(
             input_,
             config=config,
+            context=context,
             stream_mode="messages",
         ):
             node = metadata.get("langgraph_node")
@@ -136,7 +166,7 @@ async def stream_graph_response(request: ChatRequest):
         yield sse(
             "approval_required",
             {
-                "thread_id": request.thread_id,
+                "thread_id": thread_id,
                 "status": "approval_required",
                 "approval": interrupt_data,
             },
@@ -154,11 +184,11 @@ async def stream_graph_response(request: ChatRequest):
                 },
             )
 
-    messages = format_messages(final_state.values["messages"], request.thread_id)
+    messages = format_messages(final_state.values["messages"], thread_id)
     yield sse(
         "done",
         {
-            "thread_id": request.thread_id,
+            "thread_id": thread_id,
             "status": "completed",
             "response": messages,
             "total_records": len(messages),
@@ -167,9 +197,9 @@ async def stream_graph_response(request: ChatRequest):
 
 
 @router.post("/chat/stream")
-async def streamChat(request: ChatRequest):
+async def streamChat(request: ChatRequest, user_id: str = Depends(get_current_user_id)):
     return StreamingResponse(
-        stream_graph_response(request),
+        stream_graph_response(request, user_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -180,9 +210,11 @@ async def streamChat(request: ChatRequest):
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, user_id: str = Depends(get_current_user_id)):
 
-    config = {"configurable": {"thread_id": request.thread_id}}
+    thread_id = user_thread_id(user_id)
+    config = {"configurable": {"thread_id": thread_id}}
+    context = Context(user_id=user_id)
 
     state = graph_module.graph.get_state(config)
 
@@ -192,6 +224,7 @@ async def chat(request: ChatRequest):
         result = await graph_module.graph.ainvoke(
             Command(resume=request.message),
             config=config,
+            context=context,
         )
 
     # Normal conversation
@@ -200,6 +233,7 @@ async def chat(request: ChatRequest):
         result = await graph_module.graph.ainvoke(
             {"messages": [HumanMessage(content=build_user_content(request))]},
             config=config,
+            context=context,
         )
 
     # HITL triggered
@@ -208,7 +242,7 @@ async def chat(request: ChatRequest):
         interrupt_data = result["__interrupt__"][0].value
 
         return {
-            "thread_id": request.thread_id,
+            "thread_id": thread_id,
             "status": "approval_required",
             "approval": interrupt_data,
         }
@@ -216,22 +250,24 @@ async def chat(request: ChatRequest):
     # Normal response
     state = graph_module.graph.get_state(config)
 
-    messages = format_messages(state.values["messages"], request.thread_id)
+    messages = format_messages(state.values["messages"], thread_id)
 
     return {
-        "thread_id": request.thread_id,
+        "thread_id": thread_id,
         "status": "completed",
         "response": messages,
         "total_records": len(messages),
     }
 
 
-@router.get("/chat/{thread_id}")
-async def allChats(thread_id: str):
+@router.get("/chat")
+async def allChats(user_id: str = Depends(get_current_user_id)):
+    thread_id = user_thread_id(user_id)
     config = {"configurable": {"thread_id": thread_id}}
     state = graph_module.graph.get_state(config)
     if not state.values:
-        raise HTTPException(status_code=400, detail="User not found")
+        # No conversation yet for this user — return an empty history, not an error.
+        return {"thread_id": thread_id, "response": [], "total_records": 0}
 
     message = format_messages(state.values["messages"], thread_id)
 
@@ -242,8 +278,9 @@ async def allChats(thread_id: str):
     }
 
 
-@router.delete("/chat/{thread_id}")
-async def clearChat(thread_id: str):
+@router.delete("/chat")
+async def clearChat(user_id: str = Depends(get_current_user_id)):
+    thread_id = user_thread_id(user_id)
     config = {"configurable": {"thread_id": thread_id}}
 
     state = graph_module.graph.get_state(config)
@@ -258,9 +295,11 @@ async def clearChat(thread_id: str):
             detail="Checkpointer does not support thread deletion; implement manual cleanup.",
         )
 
+    # Only delete this user's own uploaded/exported files.
+    user_exports_dir = EXPORTS_BASE_DIR / user_id
     deleted_files = 0
-    if EXPORTS_BASE_DIR.exists():
-        for file_path in EXPORTS_BASE_DIR.iterdir():
+    if user_exports_dir.exists():
+        for file_path in user_exports_dir.iterdir():
             if file_path.is_file():
                 file_path.unlink()
                 deleted_files += 1
@@ -274,20 +313,25 @@ async def clearChat(thread_id: str):
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)
+):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
             detail=f"File type '{ext}' is not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}",
         )
-    EXPORTS_BASE_DIR.mkdir(parents=True, exist_ok=True)
+    # Each user's uploads live in their own subfolder so filenames never collide
+    # across accounts and one user can never read another user's files.
+    user_dir = EXPORTS_BASE_DIR / user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
     safe_name = os.path.basename(file.filename)
-    dest_path = EXPORTS_BASE_DIR / safe_name
+    dest_path = user_dir / safe_name
     stem, suffix = os.path.splitext(safe_name)
     counter = 1
     while dest_path.exists():
-        dest_path = EXPORTS_BASE_DIR / f"{stem}_{counter}{suffix}"
+        dest_path = user_dir / f"{stem}_{counter}{suffix}"
         counter += 1
 
     size = 0

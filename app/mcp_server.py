@@ -68,15 +68,19 @@ async def tavily_search(query: str):
 
 
 @mcp.tool()
-def get_recent_emails(max_results: int = 5):
+async def get_recent_emails(user_id: str, max_results: int = 5):
     """
     Get the user's most recent Gmail emails.
 
     Use this tool when the user asks about recent,
     latest, or newest emails.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     result = (
         service.users().messages().list(userId="me", maxResults=max_results).execute()
@@ -118,7 +122,7 @@ def get_recent_emails(max_results: int = 5):
 
 
 @mcp.tool()
-def search_emails(query: str, max_results: int = 10):
+async def search_emails(user_id: str, query: str, max_results: int = 10):
     """
     Search Gmail using Gmail search syntax.
 
@@ -129,9 +133,13 @@ def search_emails(query: str, max_results: int = 10):
     - newer_than:7d
     - has:attachment
     - from:amazon subject:order
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     result = (
         service.users()
@@ -187,14 +195,18 @@ def search_emails(query: str, max_results: int = 10):
 
 
 @mcp.tool()
-def get_email(message_id: str):
+async def get_email(user_id: str, message_id: str):
     """
     Get the full content of a Gmail message using its message ID.
     Use after search_emails/get_recent_emails when the complete email
     body is required.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     message = (
         service.users()
@@ -251,7 +263,8 @@ def get_email(message_id: str):
 
 
 @mcp.tool()
-def send_email(
+async def send_email(
+    user_id: str,
     to: list[str],
     subject: str,
     body: str,
@@ -265,9 +278,13 @@ def send_email(
     IMPORTANT:
     Use `file_name` from export_to_pdf/export_to_excel.
     NEVER use `file_url`.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     message = EmailMessage()
 
@@ -278,6 +295,7 @@ def send_email(
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+    USER_UPLOAD_DIR = os.path.join(BASE_DIR, "exports", user_id)
 
     if attachments:
 
@@ -286,9 +304,14 @@ def send_email(
             # Prevent LLM from creating its own path
             file_name = os.path.basename(attachment)
 
-            file_path = os.path.join(EXPORT_DIR, file_name)
+            # Check the user's own uploads first, then shared export/attachment files.
+            candidate_paths = [
+                os.path.join(USER_UPLOAD_DIR, file_name),
+                os.path.join(EXPORT_DIR, file_name),
+            ]
+            file_path = next((p for p in candidate_paths if os.path.exists(p)), None)
 
-            if not os.path.exists(file_path):
+            if not file_path:
                 return {
                     "success": False,
                     "error": "attachment_not_found",
@@ -337,12 +360,16 @@ def send_email(
 
 
 @mcp.tool()
-def create_draft(to: str, subject: str, body: str):
+async def create_draft(user_id: str, to: str, subject: str, body: str):
     """
     Create a Gmail draft without sending it.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     message = EmailMessage()
 
@@ -372,10 +399,14 @@ def create_draft(to: str, subject: str, body: str):
 
 
 @mcp.tool()
-def mark_email_read(message_id: str):
-    """Mark a Gmail message as read."""
+async def mark_email_read(user_id: str, message_id: str):
+    """Mark a Gmail message as read.
 
-    service = get_gmail_service()
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
+    """
+
+    service = await get_gmail_service(user_id)
 
     service.users().messages().modify(
         userId="me",
@@ -391,10 +422,14 @@ def mark_email_read(message_id: str):
 
 
 @mcp.tool()
-def mark_email_unread(message_id: str):
-    """Mark a Gmail message as unread."""
+async def mark_email_unread(user_id: str, message_id: str):
+    """Mark a Gmail message as unread.
 
-    service = get_gmail_service()
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
+    """
+
+    service = await get_gmail_service(user_id)
 
     service.users().messages().modify(
         userId="me",
@@ -410,15 +445,19 @@ def mark_email_unread(message_id: str):
 
 
 @mcp.tool()
-def get_upcoming_events(max_results: int = 10):
+async def get_upcoming_events(user_id: str, max_results: int = 10):
     """
     Get the user's upcoming Google Calendar events.
 
     Use when the user asks about upcoming meetings,
     appointments, events, or schedule.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_calendar_service()
+    service = await get_calendar_service(user_id)
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -452,7 +491,8 @@ def get_upcoming_events(max_results: int = 10):
 
 
 @mcp.tool()
-def create_calendar_event(
+async def create_calendar_event(
+    user_id: str,
     title: str,
     start_time: str,
     end_time: str,
@@ -465,9 +505,13 @@ def create_calendar_event(
 
     Example:
     2026-07-24T15:00:00+05:30
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_calendar_service()
+    service = await get_calendar_service(user_id)
 
     event = {
         "summary": title,
@@ -501,16 +545,21 @@ def create_calendar_event(
 
 
 @mcp.tool()
-def update_calendar_event(
+async def update_calendar_event(
+    user_id: str,
     event_id: str,
     title: str = None,
     start_time: str = None,
     end_time: str = None,
     description: str = None,
 ):
-    """Update an existing Google Calendar event."""
+    """Update an existing Google Calendar event.
 
-    service = get_calendar_service()
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
+    """
+
+    service = await get_calendar_service(user_id)
 
     event = (
         service.events()
@@ -559,10 +608,14 @@ def update_calendar_event(
 
 
 @mcp.tool()
-def delete_calendar_event(event_id: str):
-    """Delete an existing Google Calendar event."""
+async def delete_calendar_event(user_id: str, event_id: str):
+    """Delete an existing Google Calendar event.
 
-    service = get_calendar_service()
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
+    """
+
+    service = await get_calendar_service(user_id)
 
     service.events().delete(
         calendarId="primary",
@@ -633,7 +686,7 @@ def export_to_excel(
 
 
 @mcp.tool()
-def create_google_meet():
+async def create_google_meet(user_id: str):
     """
     Create a new Google Meet meeting space.
 
@@ -643,9 +696,13 @@ def create_google_meet():
     - start a new Meet space
 
     Returns the Google Meet URL and meeting code.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_meet_service()
+    service = await get_meet_service(user_id)
 
     space = service.spaces().create(body={}).execute()
 
@@ -658,15 +715,19 @@ def create_google_meet():
 
 
 @mcp.tool()
-def get_google_meet(space_name: str):
+async def get_google_meet(user_id: str, space_name: str):
     """
     Get information about a Google Meet space.
 
     space_name should be the resource name returned by
     create_google_meet, for example: spaces/abc123
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_meet_service()
+    service = await get_meet_service(user_id)
 
     space = service.spaces().get(name=space_name).execute()
 
@@ -681,15 +742,19 @@ def get_google_meet(space_name: str):
 
 
 @mcp.tool()
-def end_google_meet(space_name: str):
+async def end_google_meet(user_id: str, space_name: str):
     """
     End the active conference in a Google Meet space.
 
     Use only when the user explicitly asks to end/stop
     an active Google Meet meeting.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_meet_service()
+    service = await get_meet_service(user_id)
 
     (
         service.spaces()
@@ -708,15 +773,19 @@ def end_google_meet(space_name: str):
 
 
 @mcp.tool()
-def list_email_attachments(message_id: str):
+async def list_email_attachments(user_id: str, message_id: str):
     """
     List all attachments in a Gmail message (filename, mimeType, size, attachment_id).
 
     Use this before download_email_attachment to discover what's
     available and get the attachment_id needed to download it.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     message = (
         service.users()
@@ -753,7 +822,8 @@ def list_email_attachments(message_id: str):
 
 
 @mcp.tool()
-def download_email_attachment(
+async def download_email_attachment(
+    user_id: str,
     message_id: str,
     attachment_id: str,
     file_name: str,
@@ -773,9 +843,13 @@ def download_email_attachment(
     IMPORTANT:
     Use the returned `file_name` with send_email attachments,
     the same way export_to_pdf/export_to_excel results are used.
+
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
 
-    service = get_gmail_service()
+    service = await get_gmail_service(user_id)
 
     attachment = (
         service.users()
@@ -788,12 +862,14 @@ def download_email_attachment(
     file_data = base64.urlsafe_b64decode(attachment["data"])
 
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    EXPORT_DIR = os.path.join(BASE_DIR, "exports")
-    os.makedirs(EXPORT_DIR, exist_ok=True)
+    # Downloaded attachments go in this user's own folder so they can never
+    # collide with, or be read by, another user's files.
+    USER_UPLOAD_DIR = os.path.join(BASE_DIR, "exports", user_id)
+    os.makedirs(USER_UPLOAD_DIR, exist_ok=True)
 
-    # Prevent LLM from writing outside EXPORT_DIR
+    # Prevent LLM from writing outside USER_UPLOAD_DIR
     safe_name = os.path.basename(file_name)
-    file_path = os.path.join(EXPORT_DIR, safe_name)
+    file_path = os.path.join(USER_UPLOAD_DIR, safe_name)
 
     with open(file_path, "wb") as f:
         f.write(file_data)
@@ -866,7 +942,7 @@ READERS = {
 
 
 @mcp.tool()
-def read_file(file_name: str):
+async def read_file(user_id: str, file_name: str):
     """
     Extract and return the text/data content of an uploaded or attached
     file so it can be read, summarized, or answered questions about.
@@ -876,25 +952,36 @@ def read_file(file_name: str):
     Image files (.png, .jpg, .jpeg) are NOT supported by this tool —
     it cannot extract text from images.
 
-    file_name must be a file already available in the exports directory —
-    e.g. one just uploaded by the user, or returned by export_to_pdf /
-    export_to_excel / download_email_attachment.
+    file_name must be a file already available — e.g. one just uploaded
+    by the user, or returned by export_to_pdf / export_to_excel /
+    download_email_attachment.
 
     Use this whenever the user asks you to read, open, summarize,
     explain, or answer questions about an uploaded or attached file.
+
+    Note: user_id is injected automatically by the system based on who is
+    signed in. Never ask the user for it or attempt to supply a value.
     """
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+    USER_UPLOAD_DIR = os.path.join(BASE_DIR, "exports", user_id)
 
     safe_name = os.path.basename(file_name)
-    file_path = os.path.join(EXPORT_DIR, safe_name)
     ext = os.path.splitext(safe_name)[1].lower()
 
-    if not os.path.exists(file_path):
+    # Check the user's own uploads first, then shared export/attachment files
+    # (those already carry an unguessable uuid prefix, see app/tools/export.py).
+    candidate_paths = [
+        os.path.join(USER_UPLOAD_DIR, safe_name),
+        os.path.join(EXPORT_DIR, safe_name),
+    ]
+    file_path = next((p for p in candidate_paths if os.path.exists(p)), None)
+
+    if not file_path:
         return {
             "success": False,
             "error": "file_not_found",
-            "message": f"Could not find '{safe_name}' in exports. "
+            "message": f"Could not find '{safe_name}'. "
             f"Make sure it was uploaded first.",
         }
 
