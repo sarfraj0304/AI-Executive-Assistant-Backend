@@ -12,6 +12,7 @@ click==8.4.2
 colorama==0.4.6
 cryptography==49.0.0
 distro==1.9.0
+dnspython==2.8.0
 et_xmlfile==2.0.0
 fastapi==0.139.2
 frozenlist==1.8.0
@@ -28,6 +29,7 @@ httplib2==0.32.0
 httpx==0.28.1
 httpx-sse==0.4.3
 idna==3.18
+itsdangerous==2.2.0
 jiter==0.16.0
 jsonpatch==1.33
 jsonpointer==3.1.1
@@ -46,7 +48,7 @@ langgraph-sdk==0.4.2
 langsmith==0.10.9
 lxml==6.1.1
 mcp==1.28.1
-motor==3.6.0
+motor==3.7.1
 multidict==6.7.1
 oauthlib==3.3.1
 openai==2.46.0
@@ -65,12 +67,13 @@ pydantic==2.13.4
 pydantic-settings==2.14.2
 pydantic_core==2.46.4
 PyJWT==2.13.0
-pymongo==4.10.1
+pymongo==4.17.0
 pyparsing==3.3.2
 pypdf==5.1.0
 python-docx==1.1.2
 python-dotenv==1.2.2
 python-multipart==0.0.32
+pywin32==312
 PyYAML==6.0.3
 referencing==0.37.0
 regex==2026.7.19
