@@ -1,26 +1,7 @@
-"""
-The MCP tools (Gmail, Calendar, Meet) run in a separate stdio subprocess
-(app/mcp_server.py) and have no visibility into the current HTTP request or
-which user is chatting. This interceptor bridges that gap: it reads the
-authenticated user_id from the graph's runtime context and silently injects
-it as a tool argument before the call reaches the subprocess.
-
-The LLM never sees `user_id` in the tool schema — it's added here, after
-the model has already decided which tool to call and with what arguments.
-"""
-
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 
 
 class LoginRequiredError(Exception):
-    """
-    Raised when a Google-dependent tool is called with no signed-in user.
-    LangGraph's ToolNode catches tool exceptions and turns them into a
-    ToolMessage(status="error", content=str(exc)) rather than letting them
-    propagate — so app/routes.py detects this by checking tool_end events
-    for the LOGIN_REQUIRED_MARKER prefix, rather than catching this
-    exception type directly.
-    """
 
     MARKER = "__LOGIN_REQUIRED__"
 
@@ -56,7 +37,9 @@ GOOGLE_TOOLS = {
 async def inject_user_context(request: MCPToolCallRequest, handler):
     if request.name in GOOGLE_TOOLS:
         runtime = request.runtime
-        user_id = getattr(getattr(runtime, "context", None), "user_id", None)
+        context = getattr(runtime, "context", None)
+        context_user_id = getattr(context, "user_id", None)
+        user_id = context_user_id or request.args.get("user_id")
 
         if not user_id:
             raise LoginRequiredError(request.name)
