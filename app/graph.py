@@ -15,16 +15,29 @@ from app.utils.approval.approval_tools import APPROVAL_REQUIRED_TOOLS
 from langchain_core.tools import StructuredTool
 from app.utils.approval.approval import require_approval
 import json
+from supercompress_core import SuperCompress
+from supercompress_core.langgraph_adapter import compress_messages
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# llm = ChatOpenAI(
+#     base_url="https://openrouter.ai/api/v1",
+#     model="openrouter/free",
+#     temperature=0,
+#     api_key=OPENROUTER_API_KEY,
+# )
 
 llm = ChatOpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    model="openrouter/free",
+    # base_url="https://openrouter.ai/api/v1",
+    model="gpt-4o-mini",
     temperature=0,
-    api_key=OPENROUTER_API_KEY,
+    # api_key=OPENROUTER_API_KEY,
 )
 
 graph = None
 mcp_client = None
+_compressor = SuperCompress()
 
 
 TOOL_REGISTRY: dict[str, dict] = {}
@@ -173,6 +186,15 @@ async def init_graph():
             [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
         )
         return {"messages": [res]}
+        # compressed = compress_messages(
+        #     state["messages"],
+        #     budget_ratio=0.3,
+        #     sc=_compressor,
+        # )
+        # res = await llm_with_tools.ainvoke(
+        #     [SystemMessage(content=SYSTEM_PROMPT), *compressed["messages"]]
+        # )
+        # return {"messages": [res]}
 
     checkpointer = InMemorySaver()
 
