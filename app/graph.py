@@ -8,12 +8,16 @@ from app.prompts import SYSTEM_PROMPT
 from app.config import OPENAI_API_KEY, OPENROUTER_API_KEY
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import InjectedState
 import os
 import sys
+from typing import Annotated
 from langgraph.types import interrupt
 from app.utils.approval.approval_tools import APPROVAL_REQUIRED_TOOLS
 from langchain_core.tools import StructuredTool
 from app.utils.approval.approval import require_approval
+from pydantic import create_model, Field
+from typing import Any
 import json
 
 llm = ChatOpenAI(
@@ -50,16 +54,74 @@ def build_tool_registry(tools) -> dict[str, dict]:
     return registry
 
 
+_JSON_SCHEMA_TYPE_MAP = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+}
+
+
+def _extract_original_fields(args_schema) -> dict[str, tuple]:
+    """
+    Returns {field_name: (python_type, FieldInfo)} for every field in the
+    tool's original schema except user_id, for use with pydantic's
+    create_model(). Handles both shapes langchain_mcp_adapters can hand
+    back for args_schema across versions:
+      - a real Pydantic BaseModel subclass (has .model_fields), or
+      - a raw JSON Schema dict (has "properties"/"required" keys).
+    """
+    # Case 1: real Pydantic model class.
+    if hasattr(args_schema, "model_fields"):
+        return {
+            name: (field.annotation, field)
+            for name, field in args_schema.model_fields.items()
+            if name != "user_id"
+        }
+
+    # Case 2: raw JSON Schema dict, e.g.
+    # {"type": "object", "properties": {...}, "required": [...]}
+    if isinstance(args_schema, dict):
+        properties = args_schema.get("properties", {})
+        required = set(args_schema.get("required", []))
+        fields = {}
+        for name, prop in properties.items():
+            if name == "user_id":
+                continue
+            json_type = prop.get("type", "string")
+            python_type = _JSON_SCHEMA_TYPE_MAP.get(json_type, Any)
+            if name in required:
+                fields[name] = (
+                    python_type,
+                    Field(..., description=prop.get("description")),
+                )
+            else:
+                fields[name] = (
+                    python_type | None,
+                    Field(default=None, description=prop.get("description")),
+                )
+        return fields
+
+    raise TypeError(
+        f"Unrecognized args_schema type for tool: {type(args_schema)!r}. "
+        f"Expected a Pydantic model class or a JSON Schema dict."
+    )
+
+
 def wrap_tool_with_approval(tool):
 
     if tool.name not in APPROVAL_REQUIRED_TOOLS:
         return tool
 
-    async def execute_with_approval(**kwargs):
+    async def execute_with_approval(state: Annotated[dict, InjectedState], **kwargs):
+        real_user_id = state.get("user_id")
+        kwargs["user_id"] = real_user_id
 
         user_response = require_approval(
             tool_name=tool.name,
-            data=kwargs,
+            data={k: v for k, v in kwargs.items() if k != "user_id"},
             message=APPROVAL_REQUIRED_TOOLS[tool.name]["message"],
         )
 
@@ -70,6 +132,15 @@ def wrap_tool_with_approval(tool):
             "confirm",
             "ok",
         ]:
+            if not real_user_id:
+                return {
+                    "success": False,
+                    "status": "login_required",
+                    "message": (
+                        "Sign in with Google to use email, calendar, and "
+                        "meeting features."
+                    ),
+                }
             return await tool.ainvoke(kwargs)
 
         if user_response.lower().strip() in [
@@ -88,7 +159,7 @@ def wrap_tool_with_approval(tool):
             "success": False,
             "status": "change_requested",
             "tool": tool.name,
-            "current_data": kwargs,
+            "current_data": {k: v for k, v in kwargs.items() if k != "user_id"},
             "user_request": user_response,
             "message": (
                 "The user does not want to execute the tool yet. "
@@ -97,11 +168,18 @@ def wrap_tool_with_approval(tool):
             ),
         }
 
+    original_fields = _extract_original_fields(tool.args_schema)
+    extended_schema = create_model(
+        f"{tool.name}_ApprovalArgs",
+        **original_fields,
+        state=(Annotated[dict, InjectedState], ...),
+    )
+
     return StructuredTool.from_function(
         coroutine=execute_with_approval,
         name=tool.name,
         description=tool.description,
-        args_schema=tool.args_schema,
+        args_schema=extended_schema,
     )
 
 

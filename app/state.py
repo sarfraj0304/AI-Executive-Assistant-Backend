@@ -5,14 +5,9 @@ from dataclasses import dataclass
 
 class State(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
+    user_id: str | None
 
 
 @dataclass
 class Context:
-    """
-    Run-scoped context passed into graph.astream(..., context=Context(user_id=...)).
-    Used by the MCP tool interceptor to inject user_id into Gmail/Calendar/Meet
-    tool calls without the LLM ever seeing or choosing that argument.
-    """
-
     user_id: str | None = None

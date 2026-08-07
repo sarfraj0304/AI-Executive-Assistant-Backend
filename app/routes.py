@@ -87,12 +87,12 @@ async def stream_graph_response(
     if resuming:
         input_ = Command(resume=request.message)
     else:
-        input_ = {"messages": [HumanMessage(content=build_user_content(request))]}
+        input_ = {
+            "messages": [HumanMessage(content=build_user_content(request))],
+            "user_id": user_id,
+        }
 
-    streamed_any = False  # track whether any LLM token actually streamed
-
-    # track tool calls we've already announced, keyed by tool_call id,
-    # so we don't spam "tool_start" once per chunk while args stream in
+    streamed_any = False
     announced_tool_calls = set()
 
     try:
@@ -256,10 +256,7 @@ async def streamChat(
     )
 
     if set_guest_cookie:
-        # Lets an anonymous visitor keep a consistent (but unlinked-to-any-
-        # account) conversation thread across messages in the same browser,
-        # without requiring sign-in. Cleared automatically when they log in
-        # (their real user_id thread takes over).
+        # Set a cookie for the guest user that expires in 7 days
         response.set_cookie(
             key=GUEST_COOKIE_NAME,
             value=guest_id,
@@ -294,7 +291,10 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user_id)
     else:
 
         result = await graph_module.graph.ainvoke(
-            {"messages": [HumanMessage(content=build_user_content(request))]},
+            {
+                "messages": [HumanMessage(content=build_user_content(request))],
+                "user_id": user_id,
+            },
             config=config,
             context=context,
         )

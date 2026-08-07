@@ -1,16 +1,3 @@
-"""
-"Sign in with Google" = account signup/login AND connecting Gmail/Calendar/Meet,
-all in a single consent screen. There is no separate email/password flow.
-
-Flow:
-  1. Frontend redirects browser to  GET /auth/google/login
-  2. We redirect to Google's consent screen with ALL required scopes
-  3. Google redirects back to GET /auth/google/callback?code=...
-  4. We exchange the code for tokens, fetch the user's profile,
-     upsert the user in MongoDB (encrypted tokens), issue a JWT session
-     cookie, and redirect back to the frontend.
-"""
-
 import code
 import os
 import json
@@ -135,9 +122,6 @@ async def google_callback(request: Request):
 @router.post("/logout")
 async def google_logout():
     response = RedirectResponse(f"{FRONTEND_URL}/")
-    # delete_cookie must be called with the SAME path/samesite/secure
-    # attributes used in set_cookie above, or the browser treats it as a
-    # different cookie and the original session cookie survives "logout".
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         path="/",
