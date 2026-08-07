@@ -12,7 +12,7 @@ import secrets
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_graph()  # builds graph + starts MCP subprocess once
+    await init_graph()
     yield
 
 
@@ -28,8 +28,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET", secrets.token_hex(32)),
 )
-# allow_credentials=True + explicit origins (not "*") is required for the
-# session cookie to be sent/received cross-origin between frontend and API.
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
