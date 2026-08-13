@@ -13,8 +13,8 @@ class LoginRequiredError(Exception):
         )
 
 
-# Tools that need to know which user's Google account to act on.
-GOOGLE_TOOLS = {
+# Tools that need to know which user's account or upload folder to act on.
+USER_CONTEXT_TOOLS = {
     "get_recent_emails",
     "search_emails",
     "get_email",
@@ -31,11 +31,12 @@ GOOGLE_TOOLS = {
     "create_google_meet",
     "get_google_meet",
     "end_google_meet",
+    "read_file",
 }
 
 
 async def inject_user_context(request: MCPToolCallRequest, handler):
-    if request.name in GOOGLE_TOOLS:
+    if request.name in USER_CONTEXT_TOOLS:
         runtime = request.runtime
         context = getattr(runtime, "context", None)
         context_user_id = getattr(context, "user_id", None)

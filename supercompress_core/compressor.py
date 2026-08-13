@@ -61,6 +61,7 @@ MAX_MODEL_TOKENS = 6000
 
 # ───────────────────────── Result type ─────────────────────────
 
+
 @dataclass
 class CompressResult:
     original_text: str
@@ -84,6 +85,7 @@ class CompressResult:
 
 # ───────────────────────── Text normalization ─────────────────────────
 
+
 def normalize_context_text(text: str) -> str:
     t = str(text or "")
     t = t.replace("\r\n", "\n").replace("\r", "\n")
@@ -104,14 +106,23 @@ def normalize_context_text(text: str) -> str:
             limit = min(420, len(remaining) - 1)
             lo = int(420 * 0.45)
             for i in range(limit, lo - 1, -1):
-                two = remaining[i:i + 2]
+                two = remaining[i : i + 2]
                 if not re.match(r"[.!?]\s", two):
                     continue
                 ch = remaining[i - 1] if i - 1 >= 0 else ""
                 prev = remaining[i - 2] if i - 2 >= 0 else ""
-                if remaining[i] == "." and ch and re.match(r"[A-Z]", ch) and (not prev or re.match(r"[\s(\"'\[(]", prev)):
+                if (
+                    remaining[i] == "."
+                    and ch
+                    and re.match(r"[A-Z]", ch)
+                    and (not prev or re.match(r"[\s(\"'\[(]", prev))
+                ):
                     continue
-                if remaining[i] == "." and re.search(r"(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|vs|etc)\.$", remaining[max(0, i - 4):i + 1], re.IGNORECASE):
+                if remaining[i] == "." and re.search(
+                    r"(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|vs|etc)\.$",
+                    remaining[max(0, i - 4) : i + 1],
+                    re.IGNORECASE,
+                ):
                     continue
                 cut = i + 1
                 break
@@ -130,26 +141,142 @@ def normalize_context_text(text: str) -> str:
 
 
 _STOP_QTERMS = {
-    "what", "how", "does", "the", "is", "are", "was", "were", "function", "return",
-    "class", "def", "import", "from", "this", "that", "where", "when", "who", "why",
-    "which", "with", "for", "and", "your", "about", "into", "have", "has", "documented",
-    "passage", "title", "question", "answer", "summary", "document", "context",
-    "summarize", "findings", "recommendations", "decisions", "numbers", "errors",
-    "key", "main", "facts", "type", "paragraph", "section", "first", "other",
-    "individual", "location", "description", "living", "situation",
+    "what",
+    "how",
+    "does",
+    "the",
+    "is",
+    "are",
+    "was",
+    "were",
+    "function",
+    "return",
+    "class",
+    "def",
+    "import",
+    "from",
+    "this",
+    "that",
+    "where",
+    "when",
+    "who",
+    "why",
+    "which",
+    "with",
+    "for",
+    "and",
+    "your",
+    "about",
+    "into",
+    "have",
+    "has",
+    "documented",
+    "passage",
+    "title",
+    "question",
+    "answer",
+    "summary",
+    "document",
+    "context",
+    "summarize",
+    "findings",
+    "recommendations",
+    "decisions",
+    "numbers",
+    "errors",
+    "key",
+    "main",
+    "facts",
+    "type",
+    "paragraph",
+    "section",
+    "first",
+    "other",
+    "individual",
+    "location",
+    "description",
+    "living",
+    "situation",
 }
 
 _STOP_ENTITIES = {
-    "what", "how", "does", "the", "is", "are", "was", "were", "function", "return",
-    "class", "def", "import", "from", "this", "that", "where", "when", "who", "why",
-    "which", "with", "for", "and", "did", "user", "taken", "about", "into", "have",
-    "has", "your", "our", "any", "all", "can", "could", "should", "would", "will",
-    "passage", "title", "question", "answer", "summary", "document", "context",
-    "summarize", "findings", "recommendations", "decisions", "numbers", "errors",
-    "key", "main", "facts", "type", "paragraph", "section", "chapter", "page",
-    "according", "following", "first", "second", "third", "other", "individual",
-    "location", "description", "living", "situation", "using", "than", "then",
-    "them", "they",
+    "what",
+    "how",
+    "does",
+    "the",
+    "is",
+    "are",
+    "was",
+    "were",
+    "function",
+    "return",
+    "class",
+    "def",
+    "import",
+    "from",
+    "this",
+    "that",
+    "where",
+    "when",
+    "who",
+    "why",
+    "which",
+    "with",
+    "for",
+    "and",
+    "did",
+    "user",
+    "taken",
+    "about",
+    "into",
+    "have",
+    "has",
+    "your",
+    "our",
+    "any",
+    "all",
+    "can",
+    "could",
+    "should",
+    "would",
+    "will",
+    "passage",
+    "title",
+    "question",
+    "answer",
+    "summary",
+    "document",
+    "context",
+    "summarize",
+    "findings",
+    "recommendations",
+    "decisions",
+    "numbers",
+    "errors",
+    "key",
+    "main",
+    "facts",
+    "type",
+    "paragraph",
+    "section",
+    "chapter",
+    "page",
+    "according",
+    "following",
+    "first",
+    "second",
+    "third",
+    "other",
+    "individual",
+    "location",
+    "description",
+    "living",
+    "situation",
+    "using",
+    "than",
+    "then",
+    "them",
+    "they",
 }
 
 
@@ -180,9 +307,13 @@ def _looks_like_code_prefix(q: str) -> bool:
         return False
     if re.search(r"\?\s*$", s.strip()):
         return False
-    hits = len(re.findall(
-        r"^(package\s|import\s|from\s|using\s|#include\s|def\s|class\s|public\s|private\s|protected\s|func\s|fn\s|export\s)",
-        s, flags=re.MULTILINE))
+    hits = len(
+        re.findall(
+            r"^(package\s|import\s|from\s|using\s|#include\s|def\s|class\s|public\s|private\s|protected\s|func\s|fn\s|export\s)",
+            s,
+            flags=re.MULTILINE,
+        )
+    )
     return hits >= 3
 
 
@@ -192,14 +323,19 @@ def _focus_code_query(q: str) -> str:
         return "Keep function and class definitions, signatures, return values, and error handling."
     lines = s.split("\n")
     tail = "\n".join(lines[-16:]).strip()
-    return "Complete the following code. Focus on symbols near the end of the prefix:\n" + tail
+    return (
+        "Complete the following code. Focus on symbols near the end of the prefix:\n"
+        + tail
+    )
 
 
 def normalize_question(question: str) -> str:
     q = str(question or "").strip()
     if not q:
         return "Summarize the key facts, findings, recommendations, decisions, errors, and numbers."
-    marked = re.search(r"Question\s*:\s*([\s\S]*?)(?:\n\s*Answer\s*:|$)", q, flags=re.IGNORECASE)
+    marked = re.search(
+        r"Question\s*:\s*([\s\S]*?)(?:\n\s*Answer\s*:|$)", q, flags=re.IGNORECASE
+    )
     if marked and len(marked.group(1).strip()) >= 8:
         return re.sub(r"\s+", " ", marked.group(1).strip())
     if _looks_like_code_prefix(q):
@@ -207,7 +343,9 @@ def normalize_question(question: str) -> str:
     if len(q) > 180 or re.match(r"^Passage\s*:", q, flags=re.IGNORECASE):
         lines = [l.strip() for l in q.split("\n") if l.strip()]
         for l in reversed(lines):
-            if re.search(r"\?\s*$", l) or re.match(r"^(who|what|where|when|why|which|how)\b", l, flags=re.IGNORECASE):
+            if re.search(r"\?\s*$", l) or re.match(
+                r"^(who|what|where|when|why|which|how)\b", l, flags=re.IGNORECASE
+            ):
                 if 8 <= len(l) < 400:
                     return l
     return q
@@ -245,6 +383,7 @@ def normalize_evidence_line(line: str) -> str:
 
 # ───────────────────────── Line classification ─────────────────────────
 
+
 def classify_line(line: str) -> str:
     t = line.strip()
     if not t:
@@ -253,11 +392,19 @@ def classify_line(line: str) -> str:
         return "heading"
     if re.match(r"^(```|~~~)", t):
         return "fence"
-    if re.match(r'^(Traceback|Caused by:|Error:|Exception:|[A-Za-z]+Error\b|at\s+\S+\(|\s*File\s+".+", line \d+)', t):
+    if re.match(
+        r'^(Traceback|Caused by:|Error:|Exception:|[A-Za-z]+Error\b|at\s+\S+\(|\s*File\s+".+", line \d+)',
+        t,
+    ):
         return "trace"
-    if re.match(r"^\[turn \d+\]|^\[log \d+\]|tool:\s*|composio:", t, flags=re.IGNORECASE):
+    if re.match(
+        r"^\[turn \d+\]|^\[log \d+\]|tool:\s*|composio:", t, flags=re.IGNORECASE
+    ):
         return "tool"
-    if re.match(r"^\[?(20\d\d-\d\d-\d\d|\d\d:\d\d:\d\d|INFO|WARN|WARNING|ERROR|DEBUG|TRACE)\]?", t):
+    if re.match(
+        r"^\[?(20\d\d-\d\d-\d\d|\d\d:\d\d:\d\d|INFO|WARN|WARNING|ERROR|DEBUG|TRACE)\]?",
+        t,
+    ):
         return "log"
     if re.match(r"^(import|from)\s+|^#include\s+|^using\s+", t):
         return "import"
@@ -278,7 +425,9 @@ def classify_line(line: str) -> str:
         return "table"
     if re.match(r"^[\[]{.*[\}]\],?$", t) or re.match(r"^[A-Za-z0-9_.-]+:\s+", t):
         return "config"
-    if re.match(r"^(User|Assistant|System|Tool|Developer):", t) or re.match(r"^\[(user|assistant|system|tool|developer)\]", t, flags=re.IGNORECASE):
+    if re.match(r"^(User|Assistant|System|Tool|Developer):", t) or re.match(
+        r"^\[(user|assistant|system|tool|developer)\]", t, flags=re.IGNORECASE
+    ):
         return "chat"
     if re.match(r"^(//|#|/\*|\*)", t):
         return "comment"
@@ -295,17 +444,30 @@ def route_content_type(lines: list[str]) -> str:
     if not non_blank:
         return "text"
     top = sorted(non_blank, key=lambda kv: -kv[1])[0][0]
-    importish = type_counts.get("import", 0) + type_counts.get("definition", 0) + type_counts.get("fence", 0)
+    importish = (
+        type_counts.get("import", 0)
+        + type_counts.get("definition", 0)
+        + type_counts.get("fence", 0)
+    )
+    if top == "chat" or type_counts.get("chat", 0) >= 3:
+        return "chat"
     if top in ("import", "definition", "fence", "comment"):
         return "code"
     if importish >= 3:
         return "code"
-    if top in ("log", "trace") or (type_counts.get("log", 0) + type_counts.get("trace", 0)) > 3:
+    if (
+        top in ("log", "trace")
+        or (type_counts.get("log", 0) + type_counts.get("trace", 0)) > 3
+    ):
         return "log"
     if top in ("config", "table") and importish == 0:
         return "json"
     joined = "\n".join(lines[:max_sample]).strip()
-    if re.match(r"^[\{\[]", joined) and re.search(r'"[A-Za-z0-9_]+"\s*:', joined) and importish == 0:
+    if (
+        re.match(r"^[\{\[]", joined)
+        and re.search(r'"[A-Za-z0-9_]+"\s*:', joined)
+        and importish == 0
+    ):
         return "json"
     return "text"
 
@@ -313,7 +475,10 @@ def route_content_type(lines: list[str]) -> str:
 def question_for_content(question: str, lines: list[str]) -> str:
     raw = str(question or "").strip()
     route = route_content_type(lines)
-    if _looks_like_code_prefix(raw) or ((not raw or re.match(r"^Passage\s*:", raw, flags=re.IGNORECASE)) and route == "code"):
+    if _looks_like_code_prefix(raw) or (
+        (not raw or re.match(r"^Passage\s*:", raw, flags=re.IGNORECASE))
+        and route == "code"
+    ):
         return _focus_code_query(raw)
     if raw and not re.match(r"^Passage\s*:", raw, flags=re.IGNORECASE):
         return normalize_question(question)
@@ -323,6 +488,7 @@ def question_for_content(question: str, lines: list[str]) -> str:
 
 
 # ───────────────────────── Domain preprocessors ─────────────────────────
+
 
 def _collapse_blank_runs(lines: list[str]) -> list[str]:
     out = []
@@ -349,7 +515,9 @@ def crush_value(val, depth=0):
         if len(val) > 12:
             first_type = type(val[0])
             if all(type(item) is first_type for item in val):
-                return [crush_value(v, depth + 1) for v in val[:3]] + [f"... {len(val) - 3} more items"]
+                return [crush_value(v, depth + 1) for v in val[:3]] + [
+                    f"... {len(val) - 3} more items"
+                ]
         return [crush_value(v, depth + 1) for v in val if v is not None]
     if isinstance(val, dict):
         out = {}
@@ -363,7 +531,15 @@ def crush_value(val, depth=0):
             if isinstance(v, str) and len(v) > 200:
                 out[k] = v[:100] + f"... [{len(v) - 200} more chars]"
                 continue
-            if re.match(r"^(id|_id|uuid|guid|timestamp|created_at|updated_at|etag)$", k, flags=re.IGNORECASE) and isinstance(v, str) and len(v) > 20:
+            if (
+                re.match(
+                    r"^(id|_id|uuid|guid|timestamp|created_at|updated_at|etag)$",
+                    k,
+                    flags=re.IGNORECASE,
+                )
+                and isinstance(v, str)
+                and len(v) > 20
+            ):
                 continue
             out[k] = crush_value(v, depth + 1)
         return out
@@ -404,12 +580,19 @@ def crush_json_lines(lines: list[str]) -> tuple[list[str], str]:
                         break
             i += 1
         if depth == 0 and end > candidate:
-            raw = text[candidate:end + 1]
+            raw = text[candidate : end + 1]
             try:
                 parsed = json.loads(raw)
                 crushed = crush_value(parsed, 0)
                 crushed_str = json.dumps(crushed, separators=(",", ":"))
-                blocks.append({"start": candidate, "end": end + 1, "raw": raw, "crushed": crushed_str})
+                blocks.append(
+                    {
+                        "start": candidate,
+                        "end": end + 1,
+                        "raw": raw,
+                        "crushed": crushed_str,
+                    }
+                )
             except (json.JSONDecodeError, ValueError):
                 pass
             idx = end + 1
@@ -422,7 +605,7 @@ def crush_json_lines(lines: list[str]) -> tuple[list[str], str]:
         if len(b["crushed"]) < len(b["raw"]) * 0.85:
             try:
                 json.loads(b["crushed"])
-                result = result[:b["start"]] + b["crushed"] + result[b["end"]:]
+                result = result[: b["start"]] + b["crushed"] + result[b["end"] :]
             except (json.JSONDecodeError, ValueError):
                 pass
     return _collapse_blank_runs(result.split("\n")), "json"
@@ -434,7 +617,9 @@ def _detect_language(lines: list[str]) -> str:
         return "python"
     if re.match(r"^\s*#include\s", all_text):
         return "c"
-    if re.match(r"^\s*(import\s+\w+|from\s+['\"])", all_text) or re.match(r"^\s*const\s+\w+\s*=\s*require\(", all_text):
+    if re.match(r"^\s*(import\s+\w+|from\s+['\"])", all_text) or re.match(
+        r"^\s*const\s+\w+\s*=\s*require\(", all_text
+    ):
         return "javascript"
     if re.match(r"^\s*(pub\s+fn|fn\s+\w+|use\s+\w+::)", all_text):
         return "rust"
@@ -459,9 +644,9 @@ def compress_code_lines(lines: list[str]) -> tuple[list[str], str]:
         if in_block_comment:
             if "*/" in trimmed:
                 in_block_comment = False
-                after = trimmed[trimmed.index("*/") + 2:].strip()
+                after = trimmed[trimmed.index("*/") + 2 :].strip()
                 if after:
-                    result.append(line[:line.index("*/") + 2])
+                    result.append(line[: line.index("*/") + 2])
             i += 1
             continue
         if trimmed.startswith("/*"):
@@ -485,7 +670,11 @@ def compress_code_lines(lines: list[str]) -> tuple[list[str], str]:
             i += 1
             continue
 
-        if trimmed.startswith("//") or trimmed.startswith("#") or trimmed.startswith(";"):
+        if (
+            trimmed.startswith("//")
+            or trimmed.startswith("#")
+            or trimmed.startswith(";")
+        ):
             i += 1
             continue
         if re.match(r"^\s*\*", line) and not trimmed.endswith("*/"):
@@ -513,19 +702,30 @@ def compress_code_lines(lines: list[str]) -> tuple[list[str], str]:
                     block_end = j
                     break
             if block_end > i + 2:
-                block_text = re.sub(r"\s+", " ", " ".join(lines[i:block_end + 1]))
-                result.append(block_text[:197] + "..." if len(block_text) > 200 else block_text)
+                block_text = re.sub(r"\s+", " ", " ".join(lines[i : block_end + 1]))
+                result.append(
+                    block_text[:197] + "..." if len(block_text) > 200 else block_text
+                )
                 i = block_end + 1
                 continue
 
-        if (re.match(r"^\s*(export\s+)?(async\s+)?(function|class|interface|type|enum|def|struct|trait|impl)\b", trimmed)
-                or re.match(r"^\s*@\w+", trimmed)
-                or re.match(r"^\s*(public|private|protected|static|async|override)\s", trimmed)):
+        if (
+            re.match(
+                r"^\s*(export\s+)?(async\s+)?(function|class|interface|type|enum|def|struct|trait|impl)\b",
+                trimmed,
+            )
+            or re.match(r"^\s*@\w+", trimmed)
+            or re.match(
+                r"^\s*(public|private|protected|static|async|override)\s", trimmed
+            )
+        ):
             result.append(line)
             i += 1
             continue
 
-        if re.match(r"^\s*(return|yield|throw|await)\s", trimmed) or re.match(r"^\s*(case|default)\s*:", trimmed):
+        if re.match(r"^\s*(return|yield|throw|await)\s", trimmed) or re.match(
+            r"^\s*(case|default)\s*:", trimmed
+        ):
             result.append(line)
             i += 1
             continue
@@ -538,8 +738,16 @@ def compress_code_lines(lines: list[str]) -> tuple[list[str], str]:
 
 def compress_log_lines(lines: list[str], question: str) -> tuple[list[str], str]:
     question_lower = (question or "").lower()
-    wants_errors = bool(re.search(r"error|fail|exception|crash|timeout|denied|invalid", question_lower, flags=re.IGNORECASE))
-    wants_debug = bool(re.search(r"debug|trace|verbose", question_lower, flags=re.IGNORECASE))
+    wants_errors = bool(
+        re.search(
+            r"error|fail|exception|crash|timeout|denied|invalid",
+            question_lower,
+            flags=re.IGNORECASE,
+        )
+    )
+    wants_debug = bool(
+        re.search(r"debug|trace|verbose", question_lower, flags=re.IGNORECASE)
+    )
     result = []
     seen_fp: dict[str, int] = {}
     trace_accum: list[str] = []
@@ -561,14 +769,19 @@ def compress_log_lines(lines: list[str], question: str) -> tuple[list[str], str]
     for line in lines:
         trimmed = line.strip()
 
-        if re.match(r'^\s*(at\s+\S+|File\s+"[^"]+",\s+line\s+\d+|Caused by:|\.\w+\(.*\):\d+)', trimmed):
+        if re.match(
+            r'^\s*(at\s+\S+|File\s+"[^"]+",\s+line\s+\d+|Caused by:|\.\w+\(.*\):\d+)',
+            trimmed,
+        ):
             trace_accum.append(trimmed)
             continue
         if trace_accum and trimmed != "":
             flush_trace()
 
-        is_log = bool(re.match(r"^\s*\[?(20\d\d-\d\d-\d\d|\d\d:\d\d:\d\d)\]?\s*", trimmed) or
-                      re.match(r"^\s*(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\b", trimmed))
+        is_log = bool(
+            re.match(r"^\s*\[?(20\d\d-\d\d-\d\d|\d\d:\d\d:\d\d)\]?\s*", trimmed)
+            or re.match(r"^\s*(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\b", trimmed)
+        )
         if not is_log:
             result.append(line)
             continue
@@ -576,7 +789,9 @@ def compress_log_lines(lines: list[str], question: str) -> tuple[list[str], str]
         is_error = bool(re.search(r"ERROR|FATAL", trimmed, flags=re.IGNORECASE))
         is_warn = bool(re.search(r"WARN(ING)?", trimmed, flags=re.IGNORECASE))
         is_debug = bool(re.search(r"DEBUG|TRACE", trimmed, flags=re.IGNORECASE))
-        matches_question = any(e in trimmed for e in q_entities) or any(str(t).lower() in trimmed.lower() for t in q_terms)
+        matches_question = any(e in trimmed for e in q_entities) or any(
+            str(t).lower() in trimmed.lower() for t in q_terms
+        )
 
         if is_debug and not wants_debug and not matches_question:
             continue
@@ -603,7 +818,11 @@ def compress_log_lines(lines: list[str], question: str) -> tuple[list[str], str]
             seen_fp[fp] = 1
             if is_error or not wants_errors:
                 result.append(line)
-            elif wants_errors and re.search(r"error|fail|exception|timeout|denied|invalid", trimmed, flags=re.IGNORECASE):
+            elif wants_errors and re.search(
+                r"error|fail|exception|timeout|denied|invalid",
+                trimmed,
+                flags=re.IGNORECASE,
+            ):
                 result.append(line)
 
     flush_trace()
@@ -643,8 +862,14 @@ def _classify_token_semantic(tok: str, line_context: str) -> int:
     if re.match(r"^(User:|Assistant:|>)", t):
         return _SEM_CHAT
     boiler = [
-        r"^import\s", r"^from\s+\w+\s+import", r"^# -\*- coding", r"^LICENSE",
-        r"^Copyright", r"^\s*$", r"^---$", r"^```",
+        r"^import\s",
+        r"^from\s+\w+\s+import",
+        r"^# -\*- coding",
+        r"^LICENSE",
+        r"^Copyright",
+        r"^\s*$",
+        r"^---$",
+        r"^```",
     ]
     if any(re.match(p, line_context.strip()) for p in boiler):
         return _SEM_BOILERPLATE
@@ -652,7 +877,12 @@ def _classify_token_semantic(tok: str, line_context: str) -> int:
 
 
 def _deterministic_attention(semantic, entity_match, recency_norm, line_ctx, tok):
-    base_map = {_SEM_CODE: 0.55, _SEM_COMMENT: 0.25, _SEM_CHAT: 0.35, _SEM_BOILERPLATE: 0.08}
+    base_map = {
+        _SEM_CODE: 0.55,
+        _SEM_COMMENT: 0.25,
+        _SEM_CHAT: 0.35,
+        _SEM_BOILERPLATE: 0.08,
+    }
     base = base_map.get(semantic, 0.3)
     struct_boost = 0
     lc_strip = line_ctx.strip()
@@ -664,7 +894,12 @@ def _deterministic_attention(semantic, entity_match, recency_norm, line_ctx, tok
             idx = parts.index("def")
             if idx + 1 < len(parts) and tok == parts[idx + 1].split("(")[0]:
                 struct_boost = 0.3
-    mass = min(1, max(0.01, base + 0.25 * entity_match + struct_boost * 0.5 + 0.15 * recency_norm))
+    mass = min(
+        1,
+        max(
+            0.01, base + 0.25 * entity_match + struct_boost * 0.5 + 0.15 * recency_norm
+        ),
+    )
     layer_m = min(1, max(0.01, mass * 0.95 + 0.15 * entity_match))
     h2o = min(1, max(0.01, layer_m * (0.7 + 0.3 * (1 - recency_norm))))
     snap = min(1, max(0.01, mass * (0.3 + 0.7 * recency_norm)))
@@ -682,7 +917,7 @@ def _ngrams(text, n):
     s = text.lower().strip()
     if len(s) < n:
         return {s}
-    return {s[i:i + n] for i in range(len(s) - n + 1)}
+    return {s[i : i + n] for i in range(len(s) - n + 1)}
 
 
 def _compute_ngram_sim(line_text, question_text):
@@ -718,7 +953,7 @@ def _bigrams(s):
     cl = s.lower().strip()
     if len(cl) < 2:
         return {cl}
-    return {cl[i:i + 2] for i in range(len(cl) - 1)}
+    return {cl[i : i + 2] for i in range(len(cl) - 1)}
 
 
 def _compute_semantic_fingerprint(line_text, question_text):
@@ -779,29 +1014,35 @@ def _build_inference_records(lines: list[str], question: str):
         sem = _classify_token_semantic(tok, line_ctx)
         age_norm = pos / max(seq_len - 1, 1)
         entity_match = 1 if tok in entities else 0
-        mass, layer_m, h2o, snap = _deterministic_attention(sem, entity_match, age_norm, line_ctx, tok)
+        mass, layer_m, h2o, snap = _deterministic_attention(
+            sem, entity_match, age_norm, line_ctx, tok
+        )
         entropy = _compute_token_entropy(tok, all_tok_count, seq_len)
         cross_sim = _compute_cross_context_similarity(tok, entities)
         ctx_div = entropy  # same formula as JS (computeContextDivergence mirrors computeTokenEntropy)
-        records.append({
-            "position": pos,
-            "semantic_type": sem,
-            "attention_mass": mass,
-            "layer_attention_mean": layer_m,
-            "question_entity_match": entity_match,
-            "h2o_score": h2o,
-            "snapkv_score": snap,
-            "line_index": line_idx,
-            "line_text": line_ctx,
-            "position_encoding": _sinusoidal_position_encoding(pos, len(lines)),
-            "ngram_sim": _compute_ngram_sim(line_ctx, question or ""),
-            "line_length_norm": min(len(line_ctx) / 500, 1.0),
-            "indent_depth": _estimate_indent_depth(line_ctx),
-            "entropy": entropy,
-            "semantic_fingerprint": _compute_semantic_fingerprint(line_ctx, question or ""),
-            "cross_context_sim": cross_sim,
-            "context_divergence": ctx_div,
-        })
+        records.append(
+            {
+                "position": pos,
+                "semantic_type": sem,
+                "attention_mass": mass,
+                "layer_attention_mean": layer_m,
+                "question_entity_match": entity_match,
+                "h2o_score": h2o,
+                "snapkv_score": snap,
+                "line_index": line_idx,
+                "line_text": line_ctx,
+                "position_encoding": _sinusoidal_position_encoding(pos, len(lines)),
+                "ngram_sim": _compute_ngram_sim(line_ctx, question or ""),
+                "line_length_norm": min(len(line_ctx) / 500, 1.0),
+                "indent_depth": _estimate_indent_depth(line_ctx),
+                "entropy": entropy,
+                "semantic_fingerprint": _compute_semantic_fingerprint(
+                    line_ctx, question or ""
+                ),
+                "cross_context_sim": cross_sim,
+                "context_divergence": ctx_div,
+            }
+        )
         line_for_token.append(line_idx)
         tok_in_line += 1
 
@@ -832,7 +1073,7 @@ def _build_feature_tensor(records, n):
 
 
 def _gelu(x):
-    return 0.5 * x * (1 + math.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * x ** 3)))
+    return 0.5 * x * (1 + math.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * x**3)))
 
 
 def _layer_norm_row(x, weight, bias, dim):
@@ -882,9 +1123,13 @@ def forward_model(model: dict, feats: list[list[float]], n: int) -> list[float]:
                     x = [_gelu(v) for v in x]
             shared = x
             score_layer = layers[encoder_count]
-            score_out = _linear_row(shared, score_layer["weight"], score_layer["bias"], len(shared), 1)
+            score_out = _linear_row(
+                shared, score_layer["weight"], score_layer["bias"], len(shared), 1
+            )
             conf_layer = layers[encoder_count + 1]
-            conf_out = _linear_row(shared, conf_layer["weight"], conf_layer["bias"], len(shared), 1)
+            conf_out = _linear_row(
+                shared, conf_layer["weight"], conf_layer["bias"], len(shared), 1
+            )
             s = _sigmoid(score_out[0])
             c = _sigmoid(conf_out[0])
             scores[t] = s * c + 0.5 * (1 - c)
@@ -911,6 +1156,7 @@ def _line_scores_from_model(records, scores, line_for_token, num_lines):
 
 # ───────────────────────── Relevance & dedup ─────────────────────────
 
+
 def _line_fingerprint(line: str) -> str:
     s = re.sub(r"\d+", "#", line.lower())
     s = re.sub(r"\s+", " ", s).strip()
@@ -925,7 +1171,10 @@ def duplicate_line_penalty(lines: list[str]) -> list[float]:
         fps.append(fp)
         if len(fp) > 12:
             counts[fp] = counts.get(fp, 0) + 1
-    return [min(3, (counts.get(fp, 0) - 2) * 0.8) if counts.get(fp, 0) > 2 else 0 for fp in fps]
+    return [
+        min(3, (counts.get(fp, 0) - 2) * 0.8) if counts.get(fp, 0) > 2 else 0
+        for fp in fps
+    ]
 
 
 def line_question_relevance(line: str, question: str, model_line_score: float) -> float:
@@ -954,6 +1203,7 @@ def line_question_relevance(line: str, question: str, model_line_score: float) -
 
 # ───────────────────────── Block segmentation & scoring ─────────────────────────
 
+
 def _should_start_block(prev_type, ltype, prev_line, line):
     if prev_type is None:
         return True
@@ -965,13 +1215,25 @@ def _should_start_block(prev_type, ltype, prev_line, line):
         return True
     if prev_type == "heading":
         return False
-    if ltype != prev_type and ltype in ("tool", "log", "import", "list", "table", "config", "chat"):
+    if ltype != prev_type and ltype in (
+        "tool",
+        "log",
+        "import",
+        "list",
+        "table",
+        "config",
+        "chat",
+    ):
         return True
     if prev_type != ltype and prev_type in ("tool", "log", "trace", "table", "import"):
         return True
     if (prev_line or "").strip() == "":
         return True
-    if classify_line(prev_line or "") == "definition" and re.match(r"^\S", line) and classify_line(line) == "definition":
+    if (
+        classify_line(prev_line or "") == "definition"
+        and re.match(r"^\S", line)
+        and classify_line(line) == "definition"
+    ):
         return True
     return False
 
@@ -988,8 +1250,8 @@ def _segment_context(lines: list[str], token_counts: list[int]):
             return
         while cur["end"] > cur["start"] and not lines[cur["end"]].strip():
             cur["end"] -= 1
-        cur["text"] = "\n".join(lines[cur["start"]:cur["end"] + 1])
-        cur["tokens"] = sum(token_counts[cur["start"]:cur["end"] + 1])
+        cur["text"] = "\n".join(lines[cur["start"] : cur["end"] + 1])
+        cur["tokens"] = sum(token_counts[cur["start"] : cur["end"] + 1])
         if cur["text"].strip():
             blocks.append(cur)
         cur = None
@@ -1000,7 +1262,12 @@ def _segment_context(lines: list[str], token_counts: list[int]):
         too_large = cur and (i - cur["start"] >= 10 or cur["tokens"] > 220)
         if cur is None or start or too_large:
             finish()
-            cur = {"start": i, "end": i, "type": ltype, "tokens": token_counts[i] if i < len(token_counts) else 0}
+            cur = {
+                "start": i,
+                "end": i,
+                "type": ltype,
+                "tokens": token_counts[i] if i < len(token_counts) else 0,
+            }
         else:
             cur["end"] = i
             cur["tokens"] += token_counts[i] if i < len(token_counts) else 0
@@ -1072,13 +1339,18 @@ def _score_compiler_blocks(blocks, lines, line_relevance, question):
                 if reason == "context evidence":
                     reason = "query keyword match"
 
-        score = max_line * 1.4 + (sum_line / max(block["end"] - block["start"] + 1, 1)) * 0.8
+        score = (
+            max_line * 1.4
+            + (sum_line / max(block["end"] - block["start"] + 1, 1)) * 0.8
+        )
         score += entity_weight + term_weight
         if block["type"] == "definition":
             score += 3.8
         if block["type"] == "trace":
             score += 5.0
-        if block["type"] == "log" and re.search(r"(error|warn|failed|exception|timeout|denied)", text, flags=re.IGNORECASE):
+        if block["type"] == "log" and re.search(
+            r"(error|warn|failed|exception|timeout|denied)", text, flags=re.IGNORECASE
+        ):
             score += 3.2
         if block["type"] == "tool":
             score -= 8.0
@@ -1086,14 +1358,35 @@ def _score_compiler_blocks(blocks, lines, line_relevance, question):
             score += 1.3
         if block["type"] == "config" and entity_hits + term_hits > 0:
             score += 2.2
-        if re.search(r"TODO|FIXME|BUG|SECURITY|BREAKING|deprecated|root cause", text, flags=re.IGNORECASE):
+        if block["type"] == "chat":
+            # Conversational turns carry meaning even when they don't literally
+            # reuse words from the *current* query — a decision, a fact, or an
+            # answer given three turns ago is still context the model needs.
+            # Give chat blocks a flat floor plus a recency tilt so older turns
+            # still have a fighting chance instead of being dropped outright.
+            score += 2.5
+            recency = block["start"] / max(len(lines) - 1, 1)
+            score += recency * 2.5
+        if re.search(
+            r"TODO|FIXME|BUG|SECURITY|BREAKING|deprecated|root cause",
+            text,
+            flags=re.IGNORECASE,
+        ):
             score += 1.6
-        if not raw_entities or (len(raw_entities) <= 2 and re.search(r"summarize", q, flags=re.IGNORECASE)):
+        if not raw_entities or (
+            len(raw_entities) <= 2 and re.search(r"summarize", q, flags=re.IGNORECASE)
+        ):
             if block["start"] <= 2:
                 score += 3.5
-            if re.search(r"\b\d+(\.\d+)?%|\$\d|\b(FY|Q[1-4])\s*\d{2,4}\b|\b20\d{2}\b", text):
+            if re.search(
+                r"\b\d+(\.\d+)?%|\$\d|\b(FY|Q[1-4])\s*\d{2,4}\b|\b20\d{2}\b", text
+            ):
                 score += 2.2
-            if re.search(r"\b(recommend|finding|conclusion|summary|whereas|resolved|decision)\b", text, flags=re.IGNORECASE):
+            if re.search(
+                r"\b(recommend|finding|conclusion|summary|whereas|resolved|decision)\b",
+                text,
+                flags=re.IGNORECASE,
+            ):
                 score += 2.8
             if block["type"] == "heading":
                 score += 2.0
@@ -1101,17 +1394,37 @@ def _score_compiler_blocks(blocks, lines, line_relevance, question):
         dup_count = fp_counts.get(_block_fingerprint(block), 0)
         if dup_count > 1:
             score -= min(5, dup_count * 1.25)
-        if re.match(r"^(copyright|license|all rights reserved|generated by|do not edit)", text.strip(), flags=re.IGNORECASE):
+        if re.match(
+            r"^(copyright|license|all rights reserved|generated by|do not edit)",
+            text.strip(),
+            flags=re.IGNORECASE,
+        ):
             score -= 5
         if block["tokens"] > 260 and entity_hits == 0 and term_hits == 0:
             score -= 2.5
-        if len(entities) + len(terms) > 0 and entity_hits == 0 and term_hits == 0:
+        if (
+            len(entities) + len(terms) > 0
+            and entity_hits == 0
+            and term_hits == 0
+            and block["type"] != "chat"
+        ):
             score -= 6.5
-            if re.match(r"^Passage\s*\d*\s*:", text.strip(), flags=re.IGNORECASE) or block["type"] == "text":
+            if (
+                re.match(r"^Passage\s*\d*\s*:", text.strip(), flags=re.IGNORECASE)
+                or block["type"] == "text"
+            ):
                 score -= 3.5
-        if re.match(r"^(Passage|Title|Question|Answer)\s*\d*\s*:?\s*$", text.strip(), flags=re.IGNORECASE):
+        if re.match(
+            r"^(Passage|Title|Question|Answer)\s*\d*\s*:?\s*$",
+            text.strip(),
+            flags=re.IGNORECASE,
+        ):
             score -= 6
-        if re.match(r"^(see also|references|external links|navigation|contents|table of contents)\b", text.strip(), flags=re.IGNORECASE):
+        if re.match(
+            r"^(see also|references|external links|navigation|contents|table of contents)\b",
+            text.strip(),
+            flags=re.IGNORECASE,
+        ):
             score -= 4
 
         nb = dict(block)
@@ -1150,13 +1463,26 @@ def _select_blocks_under_budget(blocks, budget_tokens: int) -> set:
     # "Important" evidence: definitions/traces/logs that actually match the query,
     # or anything with a strong score, capped so it can't eat the whole budget.
     important = [
-        b for b in blocks
+        b
+        for b in blocks
         if b["type"] == "trace"
         or (b["entity_hits"] > 0 and b["score"] >= 5.5)
         or (b["score"] >= 10 and (b["entity_hits"] > 0 or b["keyword_hits"] > 0))
-        or (b["type"] == "log" and re.search(r"(error|fail|exception|timeout|denied|invalid|warn)", b["text"], flags=re.IGNORECASE)
-            and (b["entity_hits"] > 0 or b["keyword_hits"] > 0) and b["score"] >= 5)
-        or (b["type"] in ("definition", "code") and b["entity_hits"] > 0 and b["score"] >= 4)
+        or (
+            b["type"] == "log"
+            and re.search(
+                r"(error|fail|exception|timeout|denied|invalid|warn)",
+                b["text"],
+                flags=re.IGNORECASE,
+            )
+            and (b["entity_hits"] > 0 or b["keyword_hits"] > 0)
+            and b["score"] >= 5
+        )
+        or (
+            b["type"] in ("definition", "code")
+            and b["entity_hits"] > 0
+            and b["score"] >= 4
+        )
     ]
     imp_cap = max(3, min(24, math.ceil(len(blocks) * 0.25)))
     important = sorted(important, key=lambda b: (-b["score"], b["tokens"]))[:imp_cap]
@@ -1233,13 +1559,16 @@ def load_model(path: str = _MODEL_PATH) -> Optional[dict]:
 
 # ───────────────────────── Public API ─────────────────────────
 
+
 class SuperCompress:
     """Local, dependency-free prompt/context compressor. No API key needed."""
 
     def __init__(self, model_path: str = _MODEL_PATH):
         self.model = load_model(model_path)
 
-    def compress(self, context: str, query: str = "", budget_ratio: float = 0.35) -> CompressResult:
+    def compress(
+        self, context: str, query: str = "", budget_ratio: float = 0.35
+    ) -> CompressResult:
         """
         Compress `context` down toward `budget_ratio` of its tokens, keeping the
         parts most relevant to `query`.
@@ -1256,9 +1585,16 @@ class SuperCompress:
         """
         if not context or not context.strip():
             return CompressResult(
-                original_text=context, compressed_text=context, original_tokens=0,
-                kept_tokens=0, tokens_saved=0, kv_savings_pct=0.0, kept_line_ratio=0.0,
-                policy_name="noop", keep_ratio=budget_ratio, preprocessor="none",
+                original_text=context,
+                compressed_text=context,
+                original_tokens=0,
+                kept_tokens=0,
+                tokens_saved=0,
+                kv_savings_pct=0.0,
+                kept_line_ratio=0.0,
+                policy_name="noop",
+                keep_ratio=budget_ratio,
+                preprocessor="none",
                 answer_quality=1.0,
             )
 
@@ -1274,16 +1610,23 @@ class SuperCompress:
         if self.model and n <= MAX_MODEL_TOKENS:
             feats = _build_feature_tensor(records, n)
             scores = forward_model(self.model, feats, n)
-            model_line_scores = _line_scores_from_model(records, scores, line_for_token, len(preproc_lines))
+            model_line_scores = _line_scores_from_model(
+                records, scores, line_for_token, len(preproc_lines)
+            )
         else:
             # Fast path for large contexts: use the cheap deterministic h2o_score
             # per token (already computed) instead of the full MLP forward pass.
             fallback_scores = [rec["h2o_score"] for rec in records]
-            model_line_scores = _line_scores_from_model(records, fallback_scores, line_for_token, len(preproc_lines))
+            model_line_scores = _line_scores_from_model(
+                records, fallback_scores, line_for_token, len(preproc_lines)
+            )
 
         dup_penalty = duplicate_line_penalty(preproc_lines)
         line_relevance = [
-            max(0.0, line_question_relevance(line, q, model_line_scores[i]) - dup_penalty[i])
+            max(
+                0.0,
+                line_question_relevance(line, q, model_line_scores[i]) - dup_penalty[i],
+            )
             for i, line in enumerate(preproc_lines)
         ]
 
@@ -1295,7 +1638,20 @@ class SuperCompress:
         blocks_raw = _segment_context(preproc_lines, token_counts)
         blocks = _score_compiler_blocks(blocks_raw, preproc_lines, line_relevance, q)
 
-        budget_tokens = max(1, math.floor(sum(b["tokens"] for b in blocks) * budget_ratio))
+        # Chat-dominated context gets a higher retention floor: conversation
+        # doesn't compress as cleanly as logs/code/JSON (there's no redundant
+        # boilerplate to strip — every turn is a different fact), so squeezing
+        # it to the same budget_ratio as a log dump loses meaning, not noise.
+        # This only kicks in when the *content itself* routes as chat; a caller
+        # compressing docs/logs/code still gets exactly the ratio they asked for.
+        route = route_content_type(raw_lines)
+        effective_budget_ratio = budget_ratio
+        if route == "chat":
+            effective_budget_ratio = max(budget_ratio, 0.6)
+
+        budget_tokens = max(
+            1, math.floor(sum(b["tokens"] for b in blocks) * effective_budget_ratio)
+        )
         kept_ids = _select_blocks_under_budget(blocks, budget_tokens)
 
         kept_line_set = set()
@@ -1314,7 +1670,9 @@ class SuperCompress:
 
         compressed = "\n".join(preproc_lines[i] for i in sorted(kept_line_set))
 
-        kept_tokens = sum(token_counts[i] for i in kept_line_set if i < len(token_counts))
+        kept_tokens = sum(
+            token_counts[i] for i in kept_line_set if i < len(token_counts)
+        )
         compressed_tok = len(tokenize_context_lines(compressed.split("\n")))
         kept_tokens = max(kept_tokens, compressed_tok)
         original_tokens = max(raw_token_count, n)
@@ -1333,20 +1691,26 @@ class SuperCompress:
                 quality = round(hit / len(required), 4)
 
         policy_name = (
-            f"SuperCompress {preprocessor.capitalize()}" if preprocessor != "none" else "SuperCompress Compiler"
+            f"SuperCompress {preprocessor.capitalize()}"
+            if preprocessor != "none"
+            else "SuperCompress Compiler"
         )
 
         annotations = []
         for i, line in enumerate(preproc_lines):
             kept = i in kept_line_set
-            reason = "kept — evidence block" if kept else "removed — low relevance to query"
+            reason = (
+                "kept — evidence block" if kept else "removed — low relevance to query"
+            )
             if i == 0:
                 reason = "attention sink (always kept)"
             elif any(e in line for e in entities):
                 reason = "question entity match"
             elif any(t.lower() in line.lower() for t in terms):
                 reason = "question keyword match"
-            annotations.append({"line_index": i, "text": line, "kept": kept, "reason": reason})
+            annotations.append(
+                {"line_index": i, "text": line, "kept": kept, "reason": reason}
+            )
 
         return CompressResult(
             original_text=context,
@@ -1364,7 +1728,12 @@ class SuperCompress:
         )
 
 
-def compress(context: str, query: str = "", budget_ratio: float = 0.35, model_path: str = _MODEL_PATH) -> CompressResult:
+def compress(
+    context: str,
+    query: str = "",
+    budget_ratio: float = 0.35,
+    model_path: str = _MODEL_PATH,
+) -> CompressResult:
     """Convenience one-shot function (loads/caches the model on first call)."""
     return SuperCompress(model_path=model_path).compress(context, query, budget_ratio)
 

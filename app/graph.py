@@ -1,6 +1,6 @@
 from langgraph.graph import START, END, StateGraph
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, ToolMessage, AIMessage
+from langchain_core.messages import SystemMessage, ToolMessage, AIMessage, HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from app.state import State, Context
 from app.mcp_interceptors import inject_user_context
@@ -25,19 +25,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# llm = ChatOpenAI(
-#     base_url="https://openrouter.ai/api/v1",
-#     model="openrouter/free",
-#     temperature=0,
-#     api_key=OPENROUTER_API_KEY,
-# )
-
 llm = ChatOpenAI(
-    # base_url="https://openrouter.ai/api/v1",
-    model="gpt-4o-mini",
+    base_url="https://openrouter.ai/api/v1",
+    model="openrouter/free",
     temperature=0,
-    # api_key=OPENROUTER_API_KEY,
+    api_key=OPENROUTER_API_KEY,
 )
+
+# llm = ChatOpenAI(
+#     # base_url="https://openrouter.ai/api/v1",
+#     model="gpt-4o-mini",
+#     temperature=0,
+#     # api_key=OPENROUTER_API_KEY,
+# )
 
 graph = None
 mcp_client = None
@@ -45,6 +45,40 @@ _compressor = SuperCompress()
 
 
 TOOL_REGISTRY: dict[str, dict] = {}
+
+TOOL_GROUPS = {
+    "email": {
+        "get_recent_emails",
+        "search_emails",
+        "get_email",
+        "send_email",
+        "create_draft",
+        "mark_email_read",
+        "mark_email_unread",
+        "list_email_attachments",
+        "download_email_attachment",
+    },
+    "calendar": {
+        "get_upcoming_events",
+        "create_calendar_event",
+        "update_calendar_event",
+        "delete_calendar_event",
+    },
+    "meet": {
+        "create_google_meet",
+        "get_google_meet",
+        "end_google_meet",
+    },
+    "files": {
+        "export_to_pdf",
+        "export_to_excel",
+        "read_file",
+    },
+    "weather": {"get_weather"},
+    "exchange": {"get_exchange_rate"},
+    "search": {"tavily_search"},
+    "math": {"multiply_numbers"},
+}
 
 
 def build_tool_registry(tools) -> dict[str, dict]:
@@ -121,6 +155,114 @@ def _extract_original_fields(args_schema) -> dict[str, tuple]:
         f"Unrecognized args_schema type for tool: {type(args_schema)!r}. "
         f"Expected a Pydantic model class or a JSON Schema dict."
     )
+
+
+def select_tools_for_message(message: str | None, tools: list) -> list:
+    """Return only the tool groups that appear relevant to the latest user message."""
+    if not message:
+        return []
+
+    text = " ".join(str(message).lower().split())
+    if not text:
+        return []
+
+    matched_groups: set[str] = set()
+
+    if any(
+        word in text
+        for word in [
+            "email",
+            "gmail",
+            "mail",
+            "inbox",
+            "draft",
+            "thread",
+            "attachment",
+            "attachments",
+        ]
+    ):
+        matched_groups.add("email")
+
+    if any(
+        word in text
+        for word in [
+            "calendar",
+            "event",
+            "schedule",
+            "appointment",
+            "reminder",
+            "agenda",
+        ]
+    ):
+        matched_groups.add("calendar")
+
+    if any(
+        word in text
+        for word in [
+            "meet",
+            "google meet",
+            "video call",
+            "conference",
+            "join meeting",
+            "meeting link",
+        ]
+    ):
+        matched_groups.add("meet")
+
+    if any(
+        word in text
+        for word in [
+            "file",
+            "files",
+            "pdf",
+            "excel",
+            "csv",
+            "docx",
+            "xlsx",
+            "xls",
+            "document",
+            "attached",
+            "upload",
+            "read",
+            "export",
+        ]
+    ):
+        matched_groups.add("files")
+
+    if any(
+        word in text
+        for word in ["weather", "temperature", "forecast", "humidity", "rain", "sunny"]
+    ):
+        matched_groups.add("weather")
+
+    if any(
+        word in text
+        for word in ["exchange rate", "currency", "usd", "eur", "inr", "jpy", "gbp"]
+    ):
+        matched_groups.add("exchange")
+
+    if any(
+        word in text
+        for word in ["search", "web", "internet", "news", "latest", "find", "look up"]
+    ):
+        matched_groups.add("search")
+
+    if any(
+        word in text
+        for word in ["multiply", "times", "calculate", "math", "sum", "product"]
+    ):
+        matched_groups.add("math")
+
+    if not matched_groups:
+        return []
+
+    selected: list = []
+    for tool in tools:
+        tool_name = tool.name
+        if any(tool_name in TOOL_GROUPS[group_name] for group_name in matched_groups):
+            selected.append(tool)
+
+    return selected
 
 
 def wrap_tool_with_approval(tool):
@@ -257,22 +399,25 @@ async def init_graph():
 
     TOOL_REGISTRY = build_tool_registry(tools)
 
-    llm_with_tools = llm.bind_tools(tools)
-
     async def chatbot(state: State):
-        res = await llm_with_tools.ainvoke(
-            [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
+        latest_user_message = ""
+        for message in reversed(state["messages"]):
+            if isinstance(message, HumanMessage):
+                latest_user_message = str(message.content)
+                break
+
+        relevant_tools = select_tools_for_message(latest_user_message, tools)
+        llm_with_tools = llm.bind_tools(relevant_tools)
+        compressed = compress_messages(
+            state["messages"], budget_ratio=0.5, sc=_compressor, keep_last_turns=2
         )
-        return {"messages": [res]}
-        # compressed = compress_messages(
-        #     state["messages"],
-        #     budget_ratio=0.3,
-        #     sc=_compressor,
-        # )
+        res = await llm_with_tools.ainvoke(
+            [SystemMessage(content=SYSTEM_PROMPT), *compressed["messages"]]
+        )
         # res = await llm_with_tools.ainvoke(
-        #     [SystemMessage(content=SYSTEM_PROMPT), *compressed["messages"]]
+        #     [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
         # )
-        # return {"messages": [res]}
+        return {"messages": [res]}
 
     checkpointer = InMemorySaver()
 
