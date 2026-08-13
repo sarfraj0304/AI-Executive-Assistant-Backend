@@ -90,7 +90,10 @@ async def google_callback(request: Request):
     # Verify + decode the ID token to get the user's stable Google profile.
     request_adapter = google.auth.transport.requests.Request()
     id_info = google.oauth2.id_token.verify_oauth2_token(
-        credentials.id_token, request_adapter, GOOGLE_CLIENT_ID
+        credentials.id_token,
+        request_adapter,
+        GOOGLE_CLIENT_ID,
+        clock_skew_in_seconds=5,
     )
 
     google_profile = {
